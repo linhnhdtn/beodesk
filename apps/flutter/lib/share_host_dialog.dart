@@ -149,7 +149,8 @@ class _ShareHostDialogState extends State<ShareHostDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Lấy IP máy này và nhập dấu vân tay đầy đủ của thiết bị được phép gửi yêu cầu. Mỗi ảnh vẫn cần bạn xác nhận.',
+              'Lấy IP máy này. Trên máy sẽ xem màn hình, sao chép dấu vân tay ở thẻ Máy của bạn '
+              'rồi gửi sang đây để dán vào ô Dấu vân tay của máy xem. Mỗi ảnh vẫn cần bạn xác nhận.',
             ),
             const SizedBox(height: 20),
             TextField(
@@ -203,6 +204,9 @@ class _ShareHostDialogState extends State<ShareHostDialog> {
               maxLines: 3,
               decoration: const InputDecoration(
                 labelText: 'Dấu vân tay của máy xem',
+                helperText:
+                    'Lấy từ thẻ Máy của bạn trên thiết bị sẽ xem màn hình.',
+                helperMaxLines: 3,
               ),
             ),
             const SizedBox(height: 8),

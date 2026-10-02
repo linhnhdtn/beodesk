@@ -18,9 +18,10 @@ class FakeLan implements LanGateway {
   Future<List<LocalLanAddress>> localAddresses() async => addresses;
   LanHostState state = const LanHostState(listening: false);
   final responses = <(int, bool)>[];
+  final fetches = <(String, String)>[];
   int stopped = 0;
   int cancelled = 0;
-  final image = Completer<Uint8List>();
+  var image = Completer<Uint8List>();
 
   @override
   Future<LanHostState> startHost(String address, String peerFingerprint) async {
@@ -43,8 +44,11 @@ class FakeLan implements LanGateway {
   }
 
   @override
-  Future<Uint8List> fetch(String address, String hostFingerprint) =>
-      image.future;
+  Future<Uint8List> fetch(String address, String hostFingerprint) {
+    fetches.add((address, hostFingerprint));
+    return image.future;
+  }
+
   @override
   Future<void> cancel() async {
     cancelled++;
@@ -67,7 +71,7 @@ Future<void> mount(WidgetTester tester, FakeLan gateway) => tester.pumpWidget(
   ),
 );
 
-Future<void> startHost(WidgetTester tester) async {
+Future<void> startHost(WidgetTester tester, {String? viewerFingerprint}) async {
   await tester.ensureVisible(find.text('Chia sẻ màn hình máy này'));
   await tester.tap(find.text('Chia sẻ màn hình máy này'));
   await tester.pumpAndSettle();
@@ -75,7 +79,7 @@ Future<void> startHost(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.enterText(
     find.widgetWithText(TextField, 'Dấu vân tay của máy xem'),
-    'a' * 64,
+    viewerFingerprint ?? 'b' * 64,
   );
   await tester.tap(find.text('Bật chia sẻ'));
   await tester.pumpAndSettle();
@@ -346,6 +350,127 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('host rejection explains recovery and copies the viewer identity', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 850);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final gateway = FakeLan();
+    await mount(tester, gateway);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'IP máy chia sẻ và cổng'),
+      '172.16.1.126:4433',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Dấu vân tay của máy chia sẻ'),
+      'b' * 64,
+    );
+    await tester.ensureVisible(find.text('Nhận ảnh màn hình'));
+    await tester.tap(find.text('Nhận ảnh màn hình'));
+    await tester.pump();
+    const details =
+        'Waiting for host approval; verify the host trusts this viewer\'s full fingerprint\n\n'
+        'Caused by:\n'
+        '    0: connection lost\n'
+        '    1: aborted by peer: the cryptographic handshake failed: error 40: '
+        'unexpected error: Peer device fingerprint does not match the verified pin';
+    gateway.image.completeError(AnyhowException(details));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Máy chia sẻ từ chối dấu vân tay'),
+      findsOneWidget,
+    );
+    expect(find.text('Cập nhật dấu vân tay ở máy chia sẻ'), findsOneWidget);
+    expect(
+      find.textContaining('dán vào ô Dấu vân tay của máy xem'),
+      findsOneWidget,
+    );
+    expect(find.byType(LinearProgressIndicator), findsNothing);
+    await tester.tap(find.text('Chi tiết'));
+    await tester.pumpAndSettle();
+    expect(find.text(details), findsOneWidget);
+    await tester.tap(find.text('Đóng'));
+    await tester.pumpAndSettle();
+    final copy = find.byKey(const Key('copy-viewer-fingerprint'));
+    await tester.ensureVisible(copy);
+    await tester.tap(copy);
+    await tester.pumpAndSettle();
+    expect(
+      LanConnectionDetails.parse(clipboard!).fingerprint.replaceAll(' ', ''),
+      'A' * 64,
+    );
+    expect(gateway.fetches, [('172.16.1.126:4433', 'b' * 64)]);
+    expect(gateway.responses, isEmpty);
+    expect(tester.takeException(), isNull);
+
+    // Retrying keeps the host pin and clears the previous failure guidance.
+    gateway.image = Completer<Uint8List>();
+    await tester.ensureVisible(find.text('Nhận ảnh màn hình'));
+    await tester.tap(find.text('Nhận ảnh màn hình'));
+    await tester.pump();
+    expect(find.byKey(const Key('copy-viewer-fingerprint')), findsNothing);
+    expect(gateway.fetches.last, ('172.16.1.126:4433', 'b' * 64));
+    expect(gateway.fetches, hasLength(2));
+    await tester.ensureVisible(find.text('Hủy yêu cầu'));
+    await tester.tap(find.text('Hủy yêu cầu'));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'local host pin mismatch directs the viewer to the host details',
+    (tester) async {
+      final gateway = FakeLan();
+      await mount(tester, gateway);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Dấu vân tay của máy chia sẻ'),
+        'b' * 64,
+      );
+      await tester.tap(find.text('Nhận ảnh màn hình'));
+      await tester.pump();
+      gateway.image.completeError(
+        AnyhowException(
+          'Authenticating LAN host at 172.16.1.126:4433\n\nCaused by:\n'
+          '    the cryptographic handshake failed: error 40: '
+          'unexpected error: Peer device fingerprint does not match the verified pin',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Dấu vân tay máy chia sẻ không khớp.'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Sao chép lại IP + vân tay từ máy chia sẻ'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('copy-viewer-fingerprint')), findsNothing);
+      expect(find.byType(LinearProgressIndicator), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'sharing shows the configured viewer pin and updates after restart',
+    (tester) async {
+      final gateway = FakeLan();
+      await mount(tester, gateway);
+      await startHost(tester);
+      final trustedPin = find.byKey(const Key('trusted-viewer-fingerprint'));
+      expect(tester.widget<SelectableText>(trustedPin).data, 'b' * 64);
+      await tester.ensureVisible(find.text('Dừng chia sẻ'));
+      await tester.tap(find.text('Dừng chia sẻ'));
+      await tester.pumpAndSettle();
+      expect(trustedPin, findsNothing);
+      expect(gateway.stopped, 1);
+      await startHost(tester, viewerFingerprint: 'c' * 64);
+      expect(tester.widget<SelectableText>(trustedPin).data, 'c' * 64);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('host waits for local consent and denial is explicit', (
     tester,

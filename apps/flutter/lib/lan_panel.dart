@@ -29,7 +29,9 @@ class _LanPanelState extends State<LanPanel> {
   bool _starting = false;
   bool _checking = false;
   bool _consentOpen = false;
+  bool _viewerRejected = false;
   String _listeningAddress = '';
+  String _trustedViewerFingerprint = '';
 
   @override
   void initState() {
@@ -49,14 +51,22 @@ class _LanPanelState extends State<LanPanel> {
     super.dispose();
   }
 
-  void _error(Object error) {
+  void _error(Object error, {bool receiving = false}) {
     if (!mounted) return;
     final details = error is AnyhowException ? error.message : error.toString();
     final lower = details.toLowerCase();
     final String message;
     if (lower.contains('fingerprint does not match')) {
-      message =
-          'Dấu vân tay xác thực không khớp. Hãy đối chiếu đầy đủ ở cả hai máy.';
+      // A remote TLS rejection means the host rejected our viewer identity.
+      // A local failure while authenticating the host rejects its certificate.
+      if (receiving && lower.contains('aborted by peer')) {
+        setState(() => _viewerRejected = true);
+        message = 'Máy chia sẻ từ chối dấu vân tay của máy này. Cập nhật vân tay máy xem rồi bật lại chia sẻ.';
+      } else if (receiving && lower.contains('authenticating lan host at ')) {
+        message = 'Dấu vân tay máy chia sẻ không khớp. Sao chép lại IP + vân tay từ máy chia sẻ và đối chiếu đầy đủ.';
+      } else {
+        message = 'Dấu vân tay xác thực không khớp. Hãy đối chiếu đầy đủ ở cả hai máy.';
+      }
     } else if (lower.contains('connection lost') ||
         lower.contains('transport error') ||
         lower.contains('cryptographic handshake')) {
@@ -139,6 +149,7 @@ class _LanPanelState extends State<LanPanel> {
       setState(() {
         _hosting = state.listening;
         _listeningAddress = state.address;
+        _trustedViewerFingerprint = values.$2;
       });
     } catch (error) {
       _error(error);
@@ -168,12 +179,33 @@ class _LanPanelState extends State<LanPanel> {
     }
   }
 
+  Future<void> _copyViewerFingerprint() async {
+    try {
+      await Clipboard.setData(ClipboardData(text: widget.localFingerprint));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Đã sao chép dấu vân tay máy xem. Gửi cho máy chia sẻ để đối chiếu.',
+            ),
+          ),
+        );
+    } catch (error) {
+      _error(error);
+    }
+  }
+
   Future<void> _fetch() async {
     if (_address.text.trim().isEmpty || _fingerprint.text.trim().isEmpty) {
       _error('Cần địa chỉ IP và dấu vân tay đầy đủ của máy chia sẻ.');
       return;
     }
-    setState(() => _fetching = true);
+    setState(() {
+      _fetching = true;
+      _viewerRejected = false;
+    });
     try {
       final image = await widget.gateway.fetch(
         _address.text.trim(),
@@ -213,7 +245,7 @@ class _LanPanelState extends State<LanPanel> {
         ),
       );
     } catch (error) {
-      _error(error);
+      _error(error, receiving: true);
     } finally {
       if (mounted) setState(() => _fetching = false);
     }
@@ -276,6 +308,32 @@ class _LanPanelState extends State<LanPanel> {
             label: const Text('Nhận ảnh màn hình'),
           ),
         ),
+        if (_viewerRejected) ...[
+          const SizedBox(height: 16),
+          const Text(
+            'Cập nhật dấu vân tay ở máy chia sẻ',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Sao chép dấu vân tay máy này bên dưới và gửi qua kênh tin cậy. '
+            'Ở máy chia sẻ, chọn Dừng chia sẻ, mở lại Chia sẻ màn hình máy này, '
+            'dán vào ô Dấu vân tay của máy xem và đối chiếu đầy đủ rồi Bật chia sẻ. '
+            'Sau đó quay lại đây để nhận ảnh.',
+          ),
+          const SizedBox(height: 8),
+          SelectableText(
+            widget.localFingerprint,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const Key('copy-viewer-fingerprint'),
+            onPressed: _copyViewerFingerprint,
+            icon: const Icon(Icons.copy_outlined),
+            label: const Text('Sao chép vân tay máy xem'),
+          ),
+        ],
         if (_fetching) ...[
           const SizedBox(height: 12),
           const LinearProgressIndicator(),
@@ -297,6 +355,18 @@ class _LanPanelState extends State<LanPanel> {
           Text(
             'Đang chờ yêu cầu tại $_listeningAddress',
             style: const TextStyle(color: Color(0xff087f8c)),
+          ),
+          const SizedBox(height: 12),
+          const Text('Dấu vân tay máy xem được phép kết nối:'),
+          const SizedBox(height: 8),
+          SelectableText(
+            _trustedViewerFingerprint,
+            key: const Key('trusted-viewer-fingerprint'),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Để đổi máy xem hoặc sửa dấu vân tay, dừng chia sẻ rồi bật lại.',
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(

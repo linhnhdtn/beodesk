@@ -172,5 +172,38 @@ async fn wrong_viewer_pin_fails_with_connection_diagnostics_before_consent() {
         "connection failure must retain its underlying cause: {details}"
     );
     assert!(details.contains("fingerprint does not match"), "{details}");
+    assert!(details.contains("aborted by peer:"), "{details}");
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn wrong_host_pin_reports_a_local_rejection_before_consent() {
+    let host = identity();
+    let viewer = identity();
+    let other_host = identity();
+    let endpoint = transport::server(
+        "127.0.0.1:0".parse().unwrap(),
+        &DeviceCertificate::from_identity(&host).unwrap(),
+        PeerPin::from_public_key(&viewer.public_key()),
+    )
+    .unwrap();
+    let address = endpoint.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        assert!(transport::accept(&endpoint).await.is_err());
+    });
+    let error = snapshot::fetch(
+        address,
+        &viewer,
+        PeerPin::from_public_key(&other_host.public_key()),
+    )
+    .await
+    .unwrap_err();
+    let details = format!("{error:#}");
+    assert!(details.contains("fingerprint does not match"), "{details}");
+    assert!(
+        details.starts_with("Authenticating LAN host at "),
+        "{details}"
+    );
+    assert!(!details.contains("aborted by peer:"), "{details}");
     server.await.unwrap();
 }

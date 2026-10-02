@@ -28,6 +28,10 @@ UDP tại cổng đã nhập phải đi được giữa hai máy. Ứng dụng k
 
 Nếu báo `connection lost`, nguyên nhân có thể nằm ở phần xác thực hoặc máy chia sẻ đã đóng kết nối. Máy xem nhập đúng dấu vân tay host vẫn chưa đủ: host phải nhập đúng dấu vân tay của **máy xem** khi bật chia sẻ. Sao chép từ nút **Sao chép** trên máy xem, dừng chia sẻ ở host rồi bật lại với IP LAN cụ thể và dấu vân tay vừa đối chiếu. Không dùng `127.0.0.1` để nhận kết nối từ máy khác.
 
+Nếu Chi tiết chứa cả `aborted by peer` và `Peer device fingerprint does not match the verified pin`, **máy chia sẻ đang từ chối dấu vân tay máy xem**; lỗi xảy ra trước hộp thoại xin phép. Máy xem hiện hướng dẫn cùng nút **Sao chép vân tay máy xem**. Gửi dấu vân tay này qua kênh tin cậy sang máy chia sẻ, chọn **Dừng chia sẻ**, mở **Chia sẻ màn hình máy này**, dán vào ô **Dấu vân tay của máy xem**, đối chiếu đầy đủ rồi **Bật chia sẻ**. Sau đó máy xem bấm **Nhận ảnh màn hình** lần nữa. Khi chia sẻ đang bật, giao diện hiện dấu vân tay máy xem đã cấu hình để dễ đối chiếu. Không dùng dấu vân tay của chính host trong ô máy xem khi kết nối hai máy khác nhau.
+
+Nếu lỗi pin nằm ở bước `Authenticating LAN host at ...` và không có `aborted by peer`, máy xem đang từ chối dấu vân tay host. Sao chép lại **IP + vân tay** từ máy chia sẻ, đối chiếu đầy đủ qua kênh tin cậy rồi dán vào form nhận ảnh. Ứng dụng không tự thay dấu vân tay đã tin cậy hoặc bỏ kiểm tra xác thực khi lỗi.
+
 Bản mới có nút **Chi tiết** ở thông báo lỗi, giữ cả nguyên nhân Rust/TLS bên dưới dòng đầu. Khi chạy `./beodesk` từ terminal trên host, lỗi xác thực cũng xuất hiện dưới tiền tố `BeoDesk LAN peer authentication`. Các log này chỉ chứa thông tin lỗi, không có khóa riêng. Lỗi pin không khớp được tái hiện bằng kiểm thử QUIC thật; ảnh chụp chỉ có dòng `connection lost` chưa đủ để xác định chắc chắn nguyên nhân của một kết nối cụ thể.
 
 Nếu báo timeout hoặc connection refused, kiểm tra host đang hiện **Đang chờ yêu cầu tại ...**, địa chỉ/cổng đúng, hai máy đi được UDP và firewall không chặn cổng. Nếu xác thực thành công nhưng host báo không thể capture, kiểm tra GNOME X11, desktop mở khóa và giới hạn ảnh ở phần dưới.
@@ -45,8 +49,8 @@ Nếu báo timeout hoặc connection refused, kiểm tra host đang hiện **Đa
 
 Tại Ubuntu 22.04.5 x64 / GNOME X11, ngày 2026-10-01–02:
 
-- 25 Rust tests đạt, gồm 9 bài UDP QUIC thực tế; sai pin ở cả hai phía bị từ chối, gói khai báo quá lớn bị chặn trước khi đọc body, từ chối/ngắt khi đang chờ không gọi capture. Lỗi do host nhập sai pin viewer giữ được nguyên nhân xác thực.
-- 19 Flutter tests đạt: 16 widget tests cho giao diện, quyền phiên và sao chép/dán đúng vai trò; 3 tests kiểm tra định dạng thông tin kết nối, IPv6 và từ chối dữ liệu không hợp lệ. Clipboard trong widget tests được giả lập, không đọc/sửa clipboard thật của người dùng.
+- 26 Rust tests đạt, gồm 9 bài UDP QUIC thực tế; sai pin ở cả hai phía bị từ chối, gói khai báo quá lớn bị chặn trước khi đọc body, từ chối/ngắt khi đang chờ không gọi capture. Lỗi do host nhập sai pin viewer giữ được nguyên nhân xác thực; kiểm thử phân biệt lỗi host từ chối viewer (`aborted by peer`) với viewer từ chối host (`Authenticating LAN host at ...`).
+- 22 Flutter tests đạt: 19 widget tests cho giao diện, quyền phiên, sao chép/dán đúng vai trò, hướng dẫn đúng phía lỗi pin và hiển thị pin máy xem sau khi bật lại chia sẻ; 3 tests kiểm tra định dạng thông tin kết nối, IPv6 và từ chối dữ liệu không hợp lệ. Clipboard trong widget tests được giả lập, không đọc/sửa clipboard thật của người dùng.
 - Bài loopback dùng định danh GNOME Keyring thật, màn hình Xvfb 1280×720 và xác nhận do chính test thực hiện đã nhận PNG hợp lệ.
 - Native Flutter integration trên Xvfb đã lấy IP thật của chính máy bằng nút mới, bật host ở địa chỉ đó, gửi yêu cầu qua QUIC từ cùng máy, xác nhận bằng hộp thoại và hiển thị PNG qua bridge thật. Kiểm tra trạng thái tải kết thúc khi ảnh xuất hiện đã đạt. Bài này vẫn chỉ chạy trên một máy.
 
