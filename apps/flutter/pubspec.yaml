@@ -1,0 +1,24 @@
+name: beodesk
+description: "BeoDesk remote desktop for Windows, Ubuntu and Android."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_rust_bridge: 2.11.1
+  remote_bridge:
+    path: rust_builder
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

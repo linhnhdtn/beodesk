@@ -1,0 +1,26 @@
+[workspace]
+members = ["crates/remote-protocol", "crates/remote-core", "crates/remote-network", "crates/remote-capture", "crates/remote-bridge"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace.dependencies]
+prost = "0.14"
+thiserror = "2"
+ed25519-dalek = { version = "2.2", features = ["rand_core", "zeroize", "pkcs8"] }
+rand = "0.8"
+sha2 = "0.10"
+zeroize = "1"
+remote-protocol = { path = "crates/remote-protocol" }
+remote-core = { path = "crates/remote-core" }
+remote-network = { path = "crates/remote-network" }
+remote-capture = { path = "crates/remote-capture" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "io-util"] }
+anyhow = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

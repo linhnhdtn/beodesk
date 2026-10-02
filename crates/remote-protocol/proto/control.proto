@@ -1,0 +1,62 @@
+syntax = "proto3";
+package beodesk.control;
+
+// Metadata only. Identity must be authenticated by the encrypted transport.
+message Handshake {
+  bytes public_key = 1;
+  string device_name = 2;
+  repeated Capability capabilities = 3;
+  uint32 max_control_bytes = 4;
+}
+
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+  VIEW = 1;
+  CONTROL = 2;
+  H264 = 3;
+  QUIC_DATAGRAM = 4;
+  PNG_SNAPSHOT = 5;
+}
+
+message PointerMove { float x = 1; float y = 2; }
+message PointerButton {
+  uint32 button = 1;
+  bool pressed = 2;
+  float x = 3;
+  float y = 4;
+}
+message Key { uint32 hid_usage = 1; bool pressed = 2; }
+message Wheel { sint32 delta = 1; }
+message InputEvent {
+  oneof event {
+    PointerMove pointer_move = 1;
+    PointerButton pointer_button = 2;
+    Key key = 3;
+    Wheel wheel = 4;
+  }
+}
+
+enum Action {
+  ACTION_UNSPECIFIED = 0;
+  PING = 1;
+  PONG = 2;
+  INPUT_LEASE = 3;
+  DISCONNECT = 4;
+  VIEW_APPROVED = 5;
+  VIEW_DENIED = 6;
+  VIEW_UNAVAILABLE = 7;
+}
+message SessionControl { Action action = 1; }
+
+message Envelope {
+  uint32 protocol_major = 1;
+  uint32 protocol_minor = 2;
+  bytes session_id = 3;
+  uint64 transport_epoch = 4;
+  uint64 sequence = 5;
+  oneof body {
+    Handshake handshake = 10;
+    InputEvent input = 11;
+    SessionControl control = 12;
+  }
+}

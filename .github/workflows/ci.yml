@@ -1,0 +1,79 @@
+name: Foundation checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  RUSTUP_TOOLCHAIN: '1.98.1'
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux native prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev libdbus-1-dev xvfb
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - name: Install pinned Rust toolchain
+        run: rustup show
+      - name: Rust formatting, lints and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+      - name: Dart formatting, analysis and widget tests
+        working-directory: apps/flutter
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed lib test integration_test
+          flutter analyze --no-pub
+          flutter test --no-pub
+      - name: Linux release bundle
+        if: runner.os == 'Linux'
+        working-directory: apps/flutter
+        run: flutter build linux --release --no-pub
+      - name: Linux native bridge integration
+        if: runner.os == 'Linux'
+        working-directory: apps/flutter
+        run: xvfb-run -a flutter test integration_test/bridge_test.dart -d linux --no-pub
+      - name: Windows release bundle
+        if: runner.os == 'Windows'
+        working-directory: apps/flutter
+        run: flutter build windows --release --no-pub
+
+  android-compile:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: stable
+          cache: true
+      - run: rustup show
+      - name: Compile Android ARM64 debug APK
+        working-directory: apps/flutter
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter build apk --debug --target-platform android-arm64 --no-pub
