@@ -17,7 +17,14 @@ class LanConnectionDetails {
   }
 
   static String normalizeAddress(String value) {
-    final uri = Uri.tryParse('udp://${value.trim()}');
+    final raw = value.trim();
+    final bareIp = InternetAddress.tryParse(raw);
+    final endpoint = bareIp == null
+        ? raw
+        : bareIp.type == InternetAddressType.IPv6
+        ? '[${bareIp.address}]:4433'
+        : '${bareIp.address}:4433';
+    final uri = Uri.tryParse('udp://$endpoint');
     final ip = uri == null ? null : InternetAddress.tryParse(uri.host);
     if (uri == null ||
         ip == null ||

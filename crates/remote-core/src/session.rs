@@ -182,7 +182,13 @@ impl HostSession {
                 match wire::Action::try_from(control.action) {
                     Ok(wire::Action::InputLease) => self.deadline = now + INPUT_LEASE,
                     Ok(wire::Action::Disconnect) => self.close(CloseReason::Disconnected),
-                    Ok(wire::Action::Ping | wire::Action::Pong) => {}
+                    Ok(wire::Action::ReleaseInput) => {
+                        self.released.keys.extend(std::mem::take(&mut self.keys));
+                        self.released
+                            .buttons
+                            .extend(std::mem::take(&mut self.buttons));
+                    }
+                    Ok(wire::Action::Ping | wire::Action::Pong | wire::Action::FrameReceived) => {}
                     _ => return Err(SessionError::Protocol(ProtocolError::InvalidPayload)),
                 }
                 None

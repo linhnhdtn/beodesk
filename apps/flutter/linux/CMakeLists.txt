@@ -126,3 +126,7 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# Redistribute the native codec notices alongside the portable bundle.
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/../../../licenses/"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/licenses" COMPONENT Runtime)

@@ -21,7 +21,6 @@ class ShareHostDialog extends StatefulWidget {
 
 class _ShareHostDialogState extends State<ShareHostDialog> {
   final _bind = TextEditingController();
-  final _peer = TextEditingController();
   bool _detecting = false;
   String? _lookupError;
   String? _clipboardNotice;
@@ -40,7 +39,6 @@ class _ShareHostDialogState extends State<ShareHostDialog> {
   @override
   void dispose() {
     _bind.dispose();
-    _peer.dispose();
     super.dispose();
   }
 
@@ -105,21 +103,6 @@ class _ShareHostDialogState extends State<ShareHostDialog> {
     });
   }
 
-  Future<void> _pasteFingerprint() async {
-    try {
-      final clipboard = await Clipboard.getData(Clipboard.kTextPlain);
-      final details = LanConnectionDetails.parse(clipboard?.text ?? '');
-      if (!mounted) return;
-      _peer.text = details.fingerprint;
-      _notice('Đã dán dấu vân tay máy xem.');
-    } catch (_) {
-      _notice(
-        'Clipboard cần chứa dấu vân tay đầy đủ hoặc thông tin được sao chép từ BeoDesk.',
-        failed: true,
-      );
-    }
-  }
-
   Future<void> _copyConnectionDetails() async {
     try {
       if (_bind.text.trim().isEmpty) await _detectAddress();
@@ -140,7 +123,7 @@ class _ShareHostDialogState extends State<ShareHostDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Bật chia sẻ ảnh màn hình'),
+    title: const Text('Bật chia sẻ màn hình'),
     content: SizedBox(
       width: 440,
       child: SingleChildScrollView(
@@ -149,8 +132,8 @@ class _ShareHostDialogState extends State<ShareHostDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Lấy IP máy này. Trên máy sẽ xem màn hình, sao chép dấu vân tay ở thẻ Máy của bạn '
-              'rồi gửi sang đây để dán vào ô Dấu vân tay của máy xem. Mỗi ảnh vẫn cần bạn xác nhận.',
+              'Gửi IP và dấu vân tay máy này cho máy muốn điều khiển. '
+              'Khi có yêu cầu, bạn chỉ cần bấm Cho phép điều khiển.',
             ),
             const SizedBox(height: 20),
             TextField(
@@ -197,25 +180,6 @@ class _ShareHostDialogState extends State<ShareHostDialog> {
               icon: const Icon(Icons.copy_outlined),
               label: const Text('Sao chép IP + vân tay'),
             ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _peer,
-              minLines: 2,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Dấu vân tay của máy xem',
-                helperText:
-                    'Lấy từ thẻ Máy của bạn trên thiết bị sẽ xem màn hình.',
-                helperMaxLines: 3,
-              ),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              key: const Key('paste-viewer-fingerprint'),
-              onPressed: _pasteFingerprint,
-              icon: const Icon(Icons.content_paste_outlined),
-              label: const Text('Dán vân tay máy xem'),
-            ),
             if (_clipboardNotice != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -239,10 +203,19 @@ class _ShareHostDialogState extends State<ShareHostDialog> {
       FilledButton(
         onPressed: _detecting
             ? null
-            : () => Navigator.pop(context, (
-                _bind.text.trim(),
-                _peer.text.trim(),
-              )),
+            : () {
+                try {
+                  final address = LanConnectionDetails.normalizeAddress(
+                    _bind.text,
+                  );
+                  Navigator.pop(context, address);
+                } catch (error) {
+                  _notice(
+                    'Hãy nhập IP hợp lệ hoặc bấm Lấy IP + cổng.',
+                    failed: true,
+                  );
+                }
+              },
         child: const Text('Bật chia sẻ'),
       ),
     ],

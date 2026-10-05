@@ -75,10 +75,9 @@ async fn wrong_host_pin_is_rejected_during_tls_authentication() {
     let host = identity();
     let client = identity();
     let wrong = identity();
-    let endpoint = transport::server(
+    let endpoint = transport::server_attended(
         "127.0.0.1:0".parse().unwrap(),
         &DeviceCertificate::from_identity(&host).unwrap(),
-        PeerPin::from_public_key(&client.public_key()),
     )
     .unwrap();
     let address = endpoint.local_addr().unwrap();

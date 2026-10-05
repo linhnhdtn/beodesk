@@ -1,4 +1,4 @@
-use crate::{MAX_PIXELS, Snapshot, encode_rgba};
+use crate::{MAX_PIXELS, RgbaFrame, Snapshot, encode_rgba};
 use anyhow::{Context, Result, ensure};
 use x11rb::{
     connection::Connection,
@@ -6,57 +6,80 @@ use x11rb::{
 };
 
 pub fn capture() -> Result<Snapshot> {
-    let (connection, screen_number) =
-        x11rb::connect(None).context("Cannot connect to the X11 display")?;
-    let setup = connection.setup();
-    let screen = &setup.roots[screen_number];
-    let geometry = connection.get_geometry(screen.root)?.reply()?;
-    let width = geometry.width as usize;
-    let height = geometry.height as usize;
-    ensure!(
-        width > 0 && height > 0 && width * height <= MAX_PIXELS,
-        "Selected desktop exceeds the snapshot pixel limit"
-    );
-    let visual = screen
-        .allowed_depths
-        .iter()
-        .flat_map(|depth| &depth.visuals)
-        .find(|visual| visual.visual_id == screen.root_visual)
-        .context("Missing X11 root visual")?;
-    let format = setup
-        .pixmap_formats
-        .iter()
-        .find(|format| format.depth == geometry.depth)
-        .context("Missing X11 pixel format")?;
-    ensure!(
-        visual.class == VisualClass::TRUE_COLOR,
-        "Only TrueColor X11 desktops are supported"
-    );
-    ensure!(
-        matches!(format.bits_per_pixel, 24 | 32) && matches!(format.scanline_pad, 8 | 16 | 32),
-        "Unsupported X11 pixel format"
-    );
-    let image = connection
-        .get_image(
-            ImageFormat::Z_PIXMAP,
-            screen.root,
-            0,
-            0,
-            geometry.width,
-            geometry.height,
-            u32::MAX,
-        )?
-        .reply()?;
-    let rgba = convert_pixels(
-        &image.data,
-        width,
-        height,
-        format.bits_per_pixel,
-        format.scanline_pad,
-        setup.image_byte_order == ImageOrder::LSB_FIRST,
-        [visual.red_mask, visual.green_mask, visual.blue_mask],
-    )?;
-    encode_rgba(width as u32, height as u32, &rgba)
+    let frame = Capture::open()?.capture()?;
+    encode_rgba(frame.width, frame.height, &frame.rgba)
+}
+
+pub struct Capture {
+    connection: x11rb::rust_connection::RustConnection,
+    screen_number: usize,
+}
+impl Capture {
+    pub fn open() -> Result<Self> {
+        let (connection, screen_number) =
+            x11rb::connect(None).context("Cannot connect to the X11 display")?;
+        Ok(Self {
+            connection,
+            screen_number,
+        })
+    }
+    pub fn capture(&self) -> Result<RgbaFrame> {
+        let connection = &self.connection;
+        let screen_number = self.screen_number;
+        let setup = connection.setup();
+        let screen = &setup.roots[screen_number];
+        let geometry = connection.get_geometry(screen.root)?.reply()?;
+        let width = geometry.width as usize;
+        let height = geometry.height as usize;
+        ensure!(
+            width > 0 && height > 0 && width * height <= MAX_PIXELS,
+            "Selected desktop exceeds the snapshot pixel limit"
+        );
+        let visual = screen
+            .allowed_depths
+            .iter()
+            .flat_map(|depth| &depth.visuals)
+            .find(|visual| visual.visual_id == screen.root_visual)
+            .context("Missing X11 root visual")?;
+        let format = setup
+            .pixmap_formats
+            .iter()
+            .find(|format| format.depth == geometry.depth)
+            .context("Missing X11 pixel format")?;
+        ensure!(
+            visual.class == VisualClass::TRUE_COLOR,
+            "Only TrueColor X11 desktops are supported"
+        );
+        ensure!(
+            matches!(format.bits_per_pixel, 24 | 32) && matches!(format.scanline_pad, 8 | 16 | 32),
+            "Unsupported X11 pixel format"
+        );
+        let image = connection
+            .get_image(
+                ImageFormat::Z_PIXMAP,
+                screen.root,
+                0,
+                0,
+                geometry.width,
+                geometry.height,
+                u32::MAX,
+            )?
+            .reply()?;
+        let rgba = convert_pixels(
+            &image.data,
+            width,
+            height,
+            format.bits_per_pixel,
+            format.scanline_pad,
+            setup.image_byte_order == ImageOrder::LSB_FIRST,
+            [visual.red_mask, visual.green_mask, visual.blue_mask],
+        )?;
+        Ok(RgbaFrame {
+            width: width as u32,
+            height: height as u32,
+            rgba,
+        })
+    }
 }
 
 fn convert_pixels(
@@ -99,6 +122,15 @@ fn convert_pixels(
         data.len() == stride * height,
         "Unexpected X11 image buffer length"
     );
+    // Common X11 BGRX layout: avoid generic bit masks/division per component.
+    if bpp == 32 && little_endian && masks == [0xff0000, 0xff00, 0xff] {
+        let mut output = data.to_vec();
+        for pixel in output.as_chunks_mut::<4>().0 {
+            pixel.swap(0, 2);
+            pixel[3] = 255;
+        }
+        return Ok(output);
+    }
     let mut output = Vec::with_capacity(width * height * 4);
     for row in data.chunks_exact(stride) {
         for bytes in row[..width * (bpp as usize / 8)].chunks_exact(bpp as usize / 8) {

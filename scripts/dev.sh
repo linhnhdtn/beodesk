@@ -42,8 +42,15 @@ case "${1:-run}" in
     cd apps/flutter
     XDG_SESSION_TYPE=x11 xvfb-run -a -s '-screen 0 1280x900x24' flutter test integration_test/lan_snapshot_test.dart -d linux --no-pub
     ;;
+  live-smoke)
+    BEODESK_VIRTUAL_DISPLAY=1 XDG_SESSION_TYPE=x11 xvfb-run -a -s '-screen 0 1920x1080x24' cargo run --release -p remote_bridge --example lan_live_probe --locked
+    ;;
+  live-gui-smoke)
+    cd apps/flutter
+    XDG_SESSION_TYPE=x11 xvfb-run -a -s '-screen 0 1280x900x24' flutter test integration_test/lan_live_test.dart -d linux --no-pub
+    ;;
   *)
-    echo 'Usage: bash scripts/dev.sh {doctor|generate|test|build|run|smoke|snapshot-smoke|lan-smoke}' >&2
+    echo 'Usage: bash scripts/dev.sh {doctor|generate|test|build|run|smoke|snapshot-smoke|lan-smoke|live-smoke|live-gui-smoke}' >&2
     exit 2
     ;;
 esac

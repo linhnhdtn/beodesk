@@ -43,6 +43,13 @@ void main() {
       await waitFor(tester, find.text('Chia sẻ màn hình máy này'));
       await tester.ensureVisible(find.text('Chia sẻ màn hình máy này'));
       await tester.tap(find.text('Chia sẻ màn hình máy này'));
+      if (addresses.length > 1) {
+        await waitFor(tester, find.text('Chọn IP máy này'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text(localIp));
+        await tester.tap(find.text(localIp));
+      }
+      await waitFor(tester, find.text('$localIp:4433'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.widgetWithText(TextField, 'IP máy này và cổng'),
@@ -51,12 +58,14 @@ void main() {
       await tester.tap(find.byKey(const Key('detect-host-address')));
       if (addresses.length > 1) {
         await waitFor(tester, find.text('Chọn IP máy này'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text(localIp));
         await tester.tap(find.text(localIp));
       }
       await waitFor(tester, find.text(address));
-      await tester.enterText(
+      expect(
         find.widgetWithText(TextField, 'Dấu vân tay của máy xem'),
-        device.fingerprint!,
+        findsNothing,
       );
       await tester.tap(find.text('Bật chia sẻ'));
       await waitFor(tester, find.text('Dừng chia sẻ'));

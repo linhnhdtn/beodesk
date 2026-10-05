@@ -147,17 +147,19 @@ class _DeviceHomeState extends State<DeviceHome> {
                         localFingerprint: device.fingerprint!,
                       )
                     : _connectCard();
-                if (constraints.maxWidth < 720) {
-                  return Column(
-                    children: [local, const SizedBox(height: 20), remote],
-                  );
-                }
-                return Row(
+                final narrow = constraints.maxWidth < 720;
+                final cardWidth = narrow
+                    ? constraints.maxWidth
+                    : (constraints.maxWidth - 20) / 2;
+                // Keep the same element hierarchy across the breakpoint:
+                // disposing LanPanel would stop its active host/viewer session.
+                return Flex(
+                  direction: narrow ? Axis.vertical : Axis.horizontal,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: local),
-                    const SizedBox(width: 20),
-                    Expanded(child: remote),
+                    SizedBox(width: cardWidth, child: local),
+                    SizedBox(width: narrow ? 0 : 20, height: narrow ? 20 : 0),
+                    SizedBox(width: cardWidth, child: remote),
                   ],
                 );
               },

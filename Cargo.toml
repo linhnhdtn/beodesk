@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/remote-protocol", "crates/remote-core", "crates/remote-network", "crates/remote-capture", "crates/remote-bridge"]
+members = ["crates/remote-protocol", "crates/remote-core", "crates/remote-network", "crates/remote-capture", "crates/remote-input", "crates/remote-video", "crates/remote-bridge"]
 resolver = "2"
 
 [workspace.package]
@@ -18,6 +18,8 @@ remote-protocol = { path = "crates/remote-protocol" }
 remote-core = { path = "crates/remote-core" }
 remote-network = { path = "crates/remote-network" }
 remote-capture = { path = "crates/remote-capture" }
+remote-input = { path = "crates/remote-input" }
+remote-video = { path = "crates/remote-video" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "io-util"] }
 anyhow = "1"
 

@@ -63,10 +63,9 @@ async fn denial_sends_no_screen_bytes_and_never_calls_capture() {
 async fn approved_request_delivers_exact_snapshot_once() {
     let host = identity();
     let client = identity();
-    let endpoint = transport::server(
+    let endpoint = transport::server_attended(
         "127.0.0.1:0".parse().unwrap(),
         &DeviceCertificate::from_identity(&host).unwrap(),
-        PeerPin::from_public_key(&client.public_key()),
     )
     .unwrap();
     let address = endpoint.local_addr().unwrap();

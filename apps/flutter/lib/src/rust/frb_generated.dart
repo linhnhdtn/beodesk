@@ -70,7 +70,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -871008283;
+  int get rustContentHash => -837100936;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -94,17 +94,33 @@ abstract class RustLibApi extends BaseApi {
 
   Future<DeviceInfo> crateApiAppInitializeDevice();
 
+  Future<LiveFrame> crateApiLanPollLiveFrame({required int sessionId});
+
   Future<void> crateApiLanRespondToViewRequest({
     required int requestId,
     required bool approved,
   });
 
+  Future<void> crateApiLanSendLiveInput({
+    required int sessionId,
+    required int kind,
+    required double x,
+    required double y,
+    required int code,
+    required bool pressed,
+    required int delta,
+  });
+
   Future<HostStatus> crateApiLanSnapshotHostStatus();
 
-  Future<HostStatus> crateApiLanStartSnapshotHost({
+  Future<int> crateApiLanStartLiveSession({
     required String address,
-    required String peerFingerprint,
+    required String hostFingerprint,
   });
+
+  Future<HostStatus> crateApiLanStartSnapshotHost({required String address});
+
+  Future<void> crateApiLanStopLiveSession({required int sessionId});
 
   Future<void> crateApiLanStopSnapshotHost();
 }
@@ -255,6 +271,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "initialize_device", argNames: []);
 
   @override
+  Future<LiveFrame> crateApiLanPollLiveFrame({required int sessionId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(sessionId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_live_frame,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiLanPollLiveFrameConstMeta,
+        argValues: [sessionId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLanPollLiveFrameConstMeta => const TaskConstMeta(
+    debugName: "poll_live_frame",
+    argNames: ["sessionId"],
+  );
+
+  @override
   Future<void> crateApiLanRespondToViewRequest({
     required int requestId,
     required bool approved,
@@ -268,7 +314,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 7,
             port: port_,
           );
         },
@@ -290,6 +336,50 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiLanSendLiveInput({
+    required int sessionId,
+    required int kind,
+    required double x,
+    required double y,
+    required int code,
+    required bool pressed,
+    required int delta,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(sessionId, serializer);
+          sse_encode_u_8(kind, serializer);
+          sse_encode_f_32(x, serializer);
+          sse_encode_f_32(y, serializer);
+          sse_encode_u_32(code, serializer);
+          sse_encode_bool(pressed, serializer);
+          sse_encode_i_32(delta, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiLanSendLiveInputConstMeta,
+        argValues: [sessionId, kind, x, y, code, pressed, delta],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLanSendLiveInputConstMeta => const TaskConstMeta(
+    debugName: "send_live_input",
+    argNames: ["sessionId", "kind", "x", "y", "code", "pressed", "delta"],
+  );
+
+  @override
   Future<HostStatus> crateApiLanSnapshotHostStatus() {
     return handler.executeNormal(
       NormalTask(
@@ -298,7 +388,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 9,
             port: port_,
           );
         },
@@ -317,20 +407,51 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "snapshot_host_status", argNames: []);
 
   @override
-  Future<HostStatus> crateApiLanStartSnapshotHost({
+  Future<int> crateApiLanStartLiveSession({
     required String address,
-    required String peerFingerprint,
+    required String hostFingerprint,
   }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(address, serializer);
-          sse_encode_String(peerFingerprint, serializer);
+          sse_encode_String(hostFingerprint, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_32,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiLanStartLiveSessionConstMeta,
+        argValues: [address, hostFingerprint],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLanStartLiveSessionConstMeta =>
+      const TaskConstMeta(
+        debugName: "start_live_session",
+        argNames: ["address", "hostFingerprint"],
+      );
+
+  @override
+  Future<HostStatus> crateApiLanStartSnapshotHost({required String address}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(address, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
             port: port_,
           );
         },
@@ -339,7 +460,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_AnyhowException,
         ),
         constMeta: kCrateApiLanStartSnapshotHostConstMeta,
-        argValues: [address, peerFingerprint],
+        argValues: [address],
         apiImpl: this,
       ),
     );
@@ -348,8 +469,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiLanStartSnapshotHostConstMeta =>
       const TaskConstMeta(
         debugName: "start_snapshot_host",
-        argNames: ["address", "peerFingerprint"],
+        argNames: ["address"],
       );
+
+  @override
+  Future<void> crateApiLanStopLiveSession({required int sessionId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_32(sessionId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiLanStopLiveSessionConstMeta,
+        argValues: [sessionId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiLanStopLiveSessionConstMeta => const TaskConstMeta(
+    debugName: "stop_live_session",
+    argNames: ["sessionId"],
+  );
 
   @override
   Future<void> crateApiLanStopSnapshotHost() {
@@ -360,7 +511,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 13,
             port: port_,
           );
         },
@@ -426,24 +577,54 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  double dco_decode_f_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as double;
+  }
+
+  @protected
   HostStatus dco_decode_host_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 5)
-      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
     return HostStatus(
       listening: dco_decode_bool(arr[0]),
       address: dco_decode_String(arr[1]),
       requestId: dco_decode_u_32(arr[2]),
       peerFingerprint: dco_decode_String(arr[3]),
       deviceName: dco_decode_String(arr[4]),
+      live: dco_decode_bool(arr[5]),
+      control: dco_decode_bool(arr[6]),
+      active: dco_decode_bool(arr[7]),
     );
+  }
+
+  @protected
+  int dco_decode_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
   }
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint8List;
+  }
+
+  @protected
+  LiveFrame dco_decode_live_frame(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return LiveFrame(
+      frameId: dco_decode_u_32(arr[0]),
+      width: dco_decode_u_32(arr[1]),
+      height: dco_decode_u_32(arr[2]),
+      closed: dco_decode_bool(arr[3]),
+      error: dco_decode_String(arr[4]),
+    );
   }
 
   @protected
@@ -517,6 +698,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  double sse_decode_f_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getFloat32();
+  }
+
+  @protected
   HostStatus sse_decode_host_status(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_listening = sse_decode_bool(deserializer);
@@ -524,13 +711,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_requestId = sse_decode_u_32(deserializer);
     var var_peerFingerprint = sse_decode_String(deserializer);
     var var_deviceName = sse_decode_String(deserializer);
+    var var_live = sse_decode_bool(deserializer);
+    var var_control = sse_decode_bool(deserializer);
+    var var_active = sse_decode_bool(deserializer);
     return HostStatus(
       listening: var_listening,
       address: var_address,
       requestId: var_requestId,
       peerFingerprint: var_peerFingerprint,
       deviceName: var_deviceName,
+      live: var_live,
+      control: var_control,
+      active: var_active,
     );
+  }
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getInt32();
   }
 
   @protected
@@ -538,6 +737,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
+  LiveFrame sse_decode_live_frame(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_frameId = sse_decode_u_32(deserializer);
+    var var_width = sse_decode_u_32(deserializer);
+    var var_height = sse_decode_u_32(deserializer);
+    var var_closed = sse_decode_bool(deserializer);
+    var var_error = sse_decode_String(deserializer);
+    return LiveFrame(
+      frameId: var_frameId,
+      width: var_width,
+      height: var_height,
+      closed: var_closed,
+      error: var_error,
+    );
   }
 
   @protected
@@ -555,12 +771,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_decode_unit(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-  }
-
-  @protected
-  int sse_decode_i_32(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getInt32();
   }
 
   @protected
@@ -604,6 +814,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_f_32(double self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putFloat32(self);
+  }
+
+  @protected
   void sse_encode_host_status(HostStatus self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_bool(self.listening, serializer);
@@ -611,6 +827,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_32(self.requestId, serializer);
     sse_encode_String(self.peerFingerprint, serializer);
     sse_encode_String(self.deviceName, serializer);
+    sse_encode_bool(self.live, serializer);
+    sse_encode_bool(self.control, serializer);
+    sse_encode_bool(self.active, serializer);
+  }
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putInt32(self);
   }
 
   @protected
@@ -621,6 +846,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     serializer.buffer.putUint8List(self);
+  }
+
+  @protected
+  void sse_encode_live_frame(LiveFrame self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.frameId, serializer);
+    sse_encode_u_32(self.width, serializer);
+    sse_encode_u_32(self.height, serializer);
+    sse_encode_bool(self.closed, serializer);
+    sse_encode_String(self.error, serializer);
   }
 
   @protected
@@ -638,11 +873,5 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_encode_unit(void self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-  }
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putInt32(self);
   }
 }

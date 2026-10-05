@@ -16,6 +16,8 @@ use std::{future::Future, net::SocketAddr, time::Instant};
 pub struct ViewRequest {
     pub peer_fingerprint: String,
     pub device_name: String,
+    pub live: bool,
+    pub control: bool,
 }
 
 pub async fn serve<A, AFuture, C>(
@@ -28,9 +30,24 @@ where
     AFuture: Future<Output = bool>,
     C: FnOnce() -> Result<Vec<u8>> + Send + 'static,
 {
-    let (mut send, mut recv) =
+    let (send, mut recv) =
         tokio::time::timeout(wire::IO_TIMEOUT, peer.connection.accept_bi()).await??;
     let hello = wire::read_control(&mut recv).await?;
+    serve_request(peer, send, hello, authorize, capture).await
+}
+
+pub(crate) async fn serve_request<A, AFuture, C>(
+    peer: AuthenticatedConnection,
+    mut send: quinn::SendStream,
+    hello: proto::Envelope,
+    authorize: A,
+    capture: C,
+) -> Result<()>
+where
+    A: FnOnce(ViewRequest) -> AFuture,
+    AFuture: Future<Output = bool>,
+    C: FnOnce() -> Result<Vec<u8>> + Send + 'static,
+{
     ensure!(
         hello.transport_epoch == 1 && hello.sequence == 1,
         "Invalid initial session metadata"
@@ -60,6 +77,8 @@ where
             authorize(ViewRequest {
                 peer_fingerprint: peer.peer_pin.display(),
                 device_name: handshake.device_name.clone(),
+                live: false,
+                control: false,
             }),
         ) => result.unwrap_or(false),
         _ = peer.connection.closed() => false,
@@ -139,9 +158,9 @@ pub async fn fetch(
         .await
         .context("Sending snapshot request to host")?;
     send.finish().context("Finishing snapshot request")?;
-    let response = wire::read_consent(&mut recv).await.context(
-        "Waiting for host approval; verify the host trusts this viewer's full fingerprint",
-    )?;
+    let response = wire::read_consent(&mut recv)
+        .await
+        .context("Waiting for the sharing machine to allow this request")?;
     ensure!(
         response.session_id == hello.session_id
             && response.transport_epoch == 1

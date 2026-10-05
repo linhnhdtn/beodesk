@@ -13,7 +13,7 @@ fn main() -> anyhow::Result<()> {
     let socket = UdpSocket::bind("127.0.0.1:0")?;
     let address = socket.local_addr()?.to_string();
     drop(socket);
-    lan::start_snapshot_host(address.clone(), device.fingerprint.clone())?;
+    lan::start_snapshot_host(address.clone())?;
     let client_pin = device.fingerprint;
     let client = std::thread::spawn(move || lan::fetch_snapshot(address, client_pin));
     let deadline = Instant::now() + Duration::from_secs(15);

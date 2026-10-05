@@ -14,6 +14,42 @@ pub struct Snapshot {
 #[cfg(target_os = "linux")]
 mod x11;
 
+pub struct RgbaFrame {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Vec<u8>,
+}
+
+pub struct DesktopCapture {
+    #[cfg(target_os = "linux")]
+    inner: x11::Capture,
+}
+impl DesktopCapture {
+    pub fn open() -> Result<Self> {
+        #[cfg(target_os = "linux")]
+        {
+            ensure!(
+                std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("x11"),
+                "Live capture requires X11"
+            );
+            ensure_desktop_unlocked()?;
+            Ok(Self {
+                inner: x11::Capture::open()?,
+            })
+        }
+        #[cfg(not(target_os = "linux"))]
+        anyhow::bail!("Live capture is not supported on this platform yet")
+    }
+    pub fn capture(&mut self) -> Result<RgbaFrame> {
+        #[cfg(target_os = "linux")]
+        {
+            self.inner.capture()
+        }
+        #[cfg(not(target_os = "linux"))]
+        anyhow::bail!("Live capture is not supported on this platform yet")
+    }
+}
+
 pub fn capture() -> Result<Snapshot> {
     #[cfg(target_os = "linux")]
     {
@@ -105,6 +141,7 @@ pub fn encode_rgba(width: u32, height: u32, pixels: &[u8]) -> Result<Snapshot> {
     let mut output = LimitedOutput(Vec::new());
     {
         let mut encoder = png::Encoder::new(&mut output, width, height);
+        encoder.set_compression(png::Compression::Fast);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder.write_header()?;

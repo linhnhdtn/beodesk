@@ -7,13 +7,10 @@ import '../frb_generated.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-Future<HostStatus> startSnapshotHost({
-  required String address,
-  required String peerFingerprint,
-}) => RustLib.instance.api.crateApiLanStartSnapshotHost(
-  address: address,
-  peerFingerprint: peerFingerprint,
-);
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`
+
+Future<HostStatus> startSnapshotHost({required String address}) =>
+    RustLib.instance.api.crateApiLanStartSnapshotHost(address: address);
 
 Future<HostStatus> snapshotHostStatus() =>
     RustLib.instance.api.crateApiLanSnapshotHostStatus();
@@ -40,12 +37,48 @@ Future<Uint8List> fetchSnapshot({
 Future<void> cancelSnapshotRequest() =>
     RustLib.instance.api.crateApiLanCancelSnapshotRequest();
 
+Future<int> startLiveSession({
+  required String address,
+  required String hostFingerprint,
+}) => RustLib.instance.api.crateApiLanStartLiveSession(
+  address: address,
+  hostFingerprint: hostFingerprint,
+);
+
+Future<LiveFrame> pollLiveFrame({required int sessionId}) =>
+    RustLib.instance.api.crateApiLanPollLiveFrame(sessionId: sessionId);
+
+/// kind: 0 motion, 1 button, 2 key, 3 wheel, 4 release held input.
+Future<void> sendLiveInput({
+  required int sessionId,
+  required int kind,
+  required double x,
+  required double y,
+  required int code,
+  required bool pressed,
+  required int delta,
+}) => RustLib.instance.api.crateApiLanSendLiveInput(
+  sessionId: sessionId,
+  kind: kind,
+  x: x,
+  y: y,
+  code: code,
+  pressed: pressed,
+  delta: delta,
+);
+
+Future<void> stopLiveSession({required int sessionId}) =>
+    RustLib.instance.api.crateApiLanStopLiveSession(sessionId: sessionId);
+
 class HostStatus {
   final bool listening;
   final String address;
   final int requestId;
   final String peerFingerprint;
   final String deviceName;
+  final bool live;
+  final bool control;
+  final bool active;
 
   const HostStatus({
     required this.listening,
@@ -53,6 +86,9 @@ class HostStatus {
     required this.requestId,
     required this.peerFingerprint,
     required this.deviceName,
+    required this.live,
+    required this.control,
+    required this.active,
   });
 
   @override
@@ -61,7 +97,10 @@ class HostStatus {
       address.hashCode ^
       requestId.hashCode ^
       peerFingerprint.hashCode ^
-      deviceName.hashCode;
+      deviceName.hashCode ^
+      live.hashCode ^
+      control.hashCode ^
+      active.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -72,5 +111,43 @@ class HostStatus {
           address == other.address &&
           requestId == other.requestId &&
           peerFingerprint == other.peerFingerprint &&
-          deviceName == other.deviceName;
+          deviceName == other.deviceName &&
+          live == other.live &&
+          control == other.control &&
+          active == other.active;
+}
+
+class LiveFrame {
+  final int frameId;
+  final int width;
+  final int height;
+  final bool closed;
+  final String error;
+
+  const LiveFrame({
+    required this.frameId,
+    required this.width,
+    required this.height,
+    required this.closed,
+    required this.error,
+  });
+
+  @override
+  int get hashCode =>
+      frameId.hashCode ^
+      width.hashCode ^
+      height.hashCode ^
+      closed.hashCode ^
+      error.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LiveFrame &&
+          runtimeType == other.runtimeType &&
+          frameId == other.frameId &&
+          width == other.width &&
+          height == other.height &&
+          closed == other.closed &&
+          error == other.error;
 }

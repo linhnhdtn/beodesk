@@ -1,5 +1,7 @@
 # ADR 0002: Mutually pinned QUIC and one consented snapshot
 
+The host-side preconfigured viewer pin is superseded by [ADR 0003](0003-attended-connect.md) for the application's attended sharing mode. Restricted transport callers may still require both pins.
+
 Status: accepted for the LAN prototype; not M1 completion.
 
 ## Authentication

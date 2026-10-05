@@ -1,4 +1,5 @@
 //! Authenticated LAN transport. No host screen access is authorized by a handshake.
+pub mod live;
 pub mod snapshot;
 pub mod transport;
 mod verifier;

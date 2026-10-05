@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Linux native prerequisites
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev libdbus-1-dev xvfb
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev libdbus-1-dev nasm xvfb
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.47.5'

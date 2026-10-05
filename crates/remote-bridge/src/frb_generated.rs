@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -871008283;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -837100936;
 
 // Section: executor
 
@@ -213,6 +213,41 @@ fn wire__crate__api__app__initialize_device_impl(
         },
     )
 }
+fn wire__crate__api__lan__poll_live_frame_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "poll_live_frame",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_session_id = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::lan::poll_live_frame(api_session_id)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__lan__respond_to_view_request_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -243,6 +278,55 @@ fn wire__crate__api__lan__respond_to_view_request_impl(
                     (move || {
                         let output_ok =
                             crate::api::lan::respond_to_view_request(api_request_id, api_approved)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__lan__send_live_input_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "send_live_input",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_session_id = <u32>::sse_decode(&mut deserializer);
+            let api_kind = <u8>::sse_decode(&mut deserializer);
+            let api_x = <f32>::sse_decode(&mut deserializer);
+            let api_y = <f32>::sse_decode(&mut deserializer);
+            let api_code = <u32>::sse_decode(&mut deserializer);
+            let api_pressed = <bool>::sse_decode(&mut deserializer);
+            let api_delta = <i32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::lan::send_live_input(
+                            api_session_id,
+                            api_kind,
+                            api_x,
+                            api_y,
+                            api_code,
+                            api_pressed,
+                            api_delta,
+                        )?;
                         Ok(output_ok)
                     })(),
                 )
@@ -284,6 +368,43 @@ fn wire__crate__api__lan__snapshot_host_status_impl(
         },
     )
 }
+fn wire__crate__api__lan__start_live_session_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "start_live_session",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_address = <String>::sse_decode(&mut deserializer);
+            let api_host_fingerprint = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok =
+                            crate::api::lan::start_live_session(api_address, api_host_fingerprint)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__lan__start_snapshot_host_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -307,15 +428,46 @@ fn wire__crate__api__lan__start_snapshot_host_impl(
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             let api_address = <String>::sse_decode(&mut deserializer);
-            let api_peer_fingerprint = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
-                        let output_ok = crate::api::lan::start_snapshot_host(
-                            api_address,
-                            api_peer_fingerprint,
-                        )?;
+                        let output_ok = crate::api::lan::start_snapshot_host(api_address)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__lan__stop_live_session_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "stop_live_session",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_session_id = <u32>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::lan::stop_live_session(api_session_id)?;
                         Ok(output_ok)
                     })(),
                 )
@@ -417,6 +569,13 @@ impl SseDecode for crate::api::app::EngineInfo {
     }
 }
 
+impl SseDecode for f32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_f32::<NativeEndian>().unwrap()
+    }
+}
+
 impl SseDecode for crate::api::lan::HostStatus {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -425,13 +584,26 @@ impl SseDecode for crate::api::lan::HostStatus {
         let mut var_requestId = <u32>::sse_decode(deserializer);
         let mut var_peerFingerprint = <String>::sse_decode(deserializer);
         let mut var_deviceName = <String>::sse_decode(deserializer);
+        let mut var_live = <bool>::sse_decode(deserializer);
+        let mut var_control = <bool>::sse_decode(deserializer);
+        let mut var_active = <bool>::sse_decode(deserializer);
         return crate::api::lan::HostStatus {
             listening: var_listening,
             address: var_address,
             request_id: var_requestId,
             peer_fingerprint: var_peerFingerprint,
             device_name: var_deviceName,
+            live: var_live,
+            control: var_control,
+            active: var_active,
         };
+    }
+}
+
+impl SseDecode for i32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_i32::<NativeEndian>().unwrap()
     }
 }
 
@@ -444,6 +616,24 @@ impl SseDecode for Vec<u8> {
             ans_.push(<u8>::sse_decode(deserializer));
         }
         return ans_;
+    }
+}
+
+impl SseDecode for crate::api::lan::LiveFrame {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_frameId = <u32>::sse_decode(deserializer);
+        let mut var_width = <u32>::sse_decode(deserializer);
+        let mut var_height = <u32>::sse_decode(deserializer);
+        let mut var_closed = <bool>::sse_decode(deserializer);
+        let mut var_error = <String>::sse_decode(deserializer);
+        return crate::api::lan::LiveFrame {
+            frame_id: var_frameId,
+            width: var_width,
+            height: var_height,
+            closed: var_closed,
+            error: var_error,
+        };
     }
 }
 
@@ -466,13 +656,6 @@ impl SseDecode for () {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {}
 }
 
-impl SseDecode for i32 {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        deserializer.cursor.read_i32::<NativeEndian>().unwrap()
-    }
-}
-
 fn pde_ffi_dispatcher_primary_impl(
     func_id: i32,
     port: flutter_rust_bridge::for_generated::MessagePort,
@@ -486,10 +669,14 @@ fn pde_ffi_dispatcher_primary_impl(
         3 => wire__crate__api__lan__fetch_snapshot_impl(port, ptr, rust_vec_len, data_len),
         4 => wire__crate__api__app__init_app_impl(port, ptr, rust_vec_len, data_len),
         5 => wire__crate__api__app__initialize_device_impl(port, ptr, rust_vec_len, data_len),
-        6 => wire__crate__api__lan__respond_to_view_request_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__lan__snapshot_host_status_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__lan__start_snapshot_host_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__lan__stop_snapshot_host_impl(port, ptr, rust_vec_len, data_len),
+        6 => wire__crate__api__lan__poll_live_frame_impl(port, ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__lan__respond_to_view_request_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__lan__send_live_input_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__lan__snapshot_host_status_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__lan__start_live_session_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__lan__start_snapshot_host_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__lan__stop_live_session_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__lan__stop_snapshot_host_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -559,6 +746,9 @@ impl flutter_rust_bridge::IntoDart for crate::api::lan::HostStatus {
             self.request_id.into_into_dart().into_dart(),
             self.peer_fingerprint.into_into_dart().into_dart(),
             self.device_name.into_into_dart().into_dart(),
+            self.live.into_into_dart().into_dart(),
+            self.control.into_into_dart().into_dart(),
+            self.active.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -568,6 +758,25 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::lan::HostStatus>
     for crate::api::lan::HostStatus
 {
     fn into_into_dart(self) -> crate::api::lan::HostStatus {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::lan::LiveFrame {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.frame_id.into_into_dart().into_dart(),
+            self.width.into_into_dart().into_dart(),
+            self.height.into_into_dart().into_dart(),
+            self.closed.into_into_dart().into_dart(),
+            self.error.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::lan::LiveFrame {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::lan::LiveFrame> for crate::api::lan::LiveFrame {
+    fn into_into_dart(self) -> crate::api::lan::LiveFrame {
         self
     }
 }
@@ -614,6 +823,13 @@ impl SseEncode for crate::api::app::EngineInfo {
     }
 }
 
+impl SseEncode for f32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_f32::<NativeEndian>(self).unwrap();
+    }
+}
+
 impl SseEncode for crate::api::lan::HostStatus {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -622,6 +838,16 @@ impl SseEncode for crate::api::lan::HostStatus {
         <u32>::sse_encode(self.request_id, serializer);
         <String>::sse_encode(self.peer_fingerprint, serializer);
         <String>::sse_encode(self.device_name, serializer);
+        <bool>::sse_encode(self.live, serializer);
+        <bool>::sse_encode(self.control, serializer);
+        <bool>::sse_encode(self.active, serializer);
+    }
+}
+
+impl SseEncode for i32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_i32::<NativeEndian>(self).unwrap();
     }
 }
 
@@ -632,6 +858,17 @@ impl SseEncode for Vec<u8> {
         for item in self {
             <u8>::sse_encode(item, serializer);
         }
+    }
+}
+
+impl SseEncode for crate::api::lan::LiveFrame {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u32>::sse_encode(self.frame_id, serializer);
+        <u32>::sse_encode(self.width, serializer);
+        <u32>::sse_encode(self.height, serializer);
+        <bool>::sse_encode(self.closed, serializer);
+        <String>::sse_encode(self.error, serializer);
     }
 }
 
@@ -652,13 +889,6 @@ impl SseEncode for u8 {
 impl SseEncode for () {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {}
-}
-
-impl SseEncode for i32 {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        serializer.cursor.write_i32::<NativeEndian>(self).unwrap();
-    }
 }
 
 #[cfg(not(target_family = "wasm"))]

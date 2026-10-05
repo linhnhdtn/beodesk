@@ -2,6 +2,36 @@ import 'package:beodesk/connection_details.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'plain IPv4 and IPv6 use the default port and explicit ports are retained',
+    () {
+      expect(
+        LanConnectionDetails.normalizeAddress('192.168.1.20'),
+        '192.168.1.20:4433',
+      );
+      expect(
+        LanConnectionDetails.normalizeAddress('fd00::1'),
+        '[fd00::1]:4433',
+      );
+      expect(
+        LanConnectionDetails.normalizeAddress('192.168.1.20:5444'),
+        '192.168.1.20:5444',
+      );
+      expect(
+        () => LanConnectionDetails.normalizeAddress('0.0.0.0'),
+        throwsFormatException,
+      );
+      expect(
+        () => LanConnectionDetails.normalizeAddress('::'),
+        throwsFormatException,
+      );
+      expect(
+        () => LanConnectionDetails.normalizeAddress('host.example'),
+        throwsFormatException,
+      );
+    },
+  );
+
   test('shared text preserves the complete address and fingerprint', () {
     final original = LanConnectionDetails(
       address: '172.16.1.126:4433',

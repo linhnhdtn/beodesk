@@ -9,6 +9,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
 
 class FakeLan implements LanGateway {
+  final disposedTextures = <int>[];
+  @override
+  Future<int> createTexture(int sessionId) async => 42;
+  @override
+  Future<void> disposeTexture(int textureId) async {
+    disposedTextures.add(textureId);
+  }
+
   @override
   bool get canHost => true;
   List<LocalLanAddress> addresses = const [
@@ -22,9 +30,32 @@ class FakeLan implements LanGateway {
   int stopped = 0;
   int cancelled = 0;
   var image = Completer<Uint8List>();
+  var live = Completer<int>();
+  final inputs = <LanInput>[];
+  final stoppedSessions = <int>[];
+  final frames = <LanFrame>[];
 
   @override
-  Future<LanHostState> startHost(String address, String peerFingerprint) async {
+  Future<int> startLive(String address, String hostFingerprint) {
+    fetches.add((address, hostFingerprint));
+    return live.future;
+  }
+
+  @override
+  Future<LanFrame> pollLive(int sessionId) async =>
+      frames.isEmpty ? const LanFrame() : frames.removeAt(0);
+  @override
+  Future<void> sendInput(int sessionId, LanInput input) async {
+    inputs.add(input);
+  }
+
+  @override
+  Future<void> stopLive(int sessionId) async {
+    stoppedSessions.add(sessionId);
+  }
+
+  @override
+  Future<LanHostState> startHost(String address) async {
     state = LanHostState(listening: true, address: address);
     return state;
   }
@@ -58,6 +89,13 @@ class FakeLan implements LanGateway {
   }
 }
 
+class DelayedStatusLan extends FakeLan {
+  Completer<LanHostState>? delayedStatus;
+  @override
+  Future<LanHostState> hostStatus() =>
+      delayedStatus?.future ?? super.hostStatus();
+}
+
 Future<void> mount(WidgetTester tester, FakeLan gateway) => tester.pumpWidget(
   MaterialApp(
     home: Scaffold(
@@ -71,15 +109,15 @@ Future<void> mount(WidgetTester tester, FakeLan gateway) => tester.pumpWidget(
   ),
 );
 
-Future<void> startHost(WidgetTester tester, {String? viewerFingerprint}) async {
+Future<void> startHost(WidgetTester tester) async {
   await tester.ensureVisible(find.text('Chia sẻ màn hình máy này'));
   await tester.tap(find.text('Chia sẻ màn hình máy này'));
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const Key('detect-host-address')));
   await tester.pumpAndSettle();
-  await tester.enterText(
+  expect(
     find.widgetWithText(TextField, 'Dấu vân tay của máy xem'),
-    viewerFingerprint ?? 'b' * 64,
+    findsNothing,
   );
   await tester.tap(find.text('Bật chia sẻ'));
   await tester.pumpAndSettle();
@@ -104,6 +142,59 @@ const pending = LanHostState(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets('late consent status cannot pop the host page after approval', (
+    tester,
+  ) async {
+    final gateway = DelayedStatusLan();
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigator,
+        home: const Scaffold(body: Text('Landing page')),
+      ),
+    );
+    unawaited(
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => Scaffold(
+            body: SingleChildScrollView(
+              child: LanPanel(gateway: gateway, localFingerprint: 'a' * 64),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await startHost(tester);
+    gateway.state = const LanHostState(
+      listening: true,
+      requestId: 7,
+      live: true,
+      control: true,
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(find.text('Cho phép xem và điều khiển?'), findsOneWidget);
+
+    // A native status call starts while consent is open, then completes after
+    // approval while the dialog is still mounted for its reverse animation.
+    gateway.delayedStatus = Completer<LanHostState>();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text('Cho phép điều khiển'));
+    await tester.pump();
+    expect(gateway.responses, [(7, true)]);
+    gateway.delayedStatus!.complete(const LanHostState(listening: true));
+    await tester.pumpAndSettle();
+    expect(
+      gateway.stopped,
+      0,
+      reason: 'Late status must not close the host page',
+    );
+    expect(find.byType(LanPanel), findsOneWidget);
+    expect(find.text('Landing page'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    expect(gateway.stopped, 1);
+  });
   String? clipboard;
   setUp(() {
     clipboard = null;
@@ -159,7 +250,7 @@ void main() {
   });
 
   testWidgets(
-    'popup pastes only the viewer pin and copies the local device pin',
+    'sharing popup copies its own endpoint without requesting a viewer pin',
     (tester) async {
       final gateway = FakeLan();
       await mount(tester, gateway);
@@ -168,24 +259,9 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('detect-local-endpoint')));
       await tester.pumpAndSettle();
-      clipboard = LanConnectionDetails(
-        address: '172.16.1.99:5444',
-        fingerprint: 'b' * 64,
-      ).encode();
-      await tester.ensureVisible(
-        find.byKey(const Key('paste-viewer-fingerprint')),
-      );
-      await tester.tap(find.byKey(const Key('paste-viewer-fingerprint')));
-      await tester.pumpAndSettle();
       expect(
-        tester
-            .widget<TextField>(
-              find.widgetWithText(TextField, 'Dấu vân tay của máy xem'),
-            )
-            .controller!
-            .text
-            .replaceAll(' ', ''),
-        'B' * 64,
+        find.widgetWithText(TextField, 'Dấu vân tay của máy xem'),
+        findsNothing,
       );
       expect(
         tester
@@ -290,8 +366,6 @@ void main() {
     await tester.ensureVisible(find.text('Chia sẻ màn hình máy này'));
     await tester.tap(find.text('Chia sẻ màn hình máy này'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('detect-host-address')));
-    await tester.pumpAndSettle();
     expect(find.text('Chọn IP máy này'), findsOneWidget);
     await tester.tap(find.text('172.16.1.126'));
     await tester.pumpAndSettle();
@@ -351,7 +425,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('host rejection explains recovery and copies the viewer identity', (
+  testWidgets('legacy host rejection explains updating the sharing app', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(400, 850);
@@ -380,28 +454,16 @@ void main() {
     gateway.image.completeError(AnyhowException(details));
     await tester.pumpAndSettle();
     expect(
-      find.textContaining('Máy chia sẻ từ chối dấu vân tay'),
+      find.textContaining('Máy chia sẻ đang dùng cách kết nối cũ.'),
       findsOneWidget,
     );
-    expect(find.text('Cập nhật dấu vân tay ở máy chia sẻ'), findsOneWidget);
-    expect(
-      find.textContaining('dán vào ô Dấu vân tay của máy xem'),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('copy-viewer-fingerprint')), findsNothing);
     expect(find.byType(LinearProgressIndicator), findsNothing);
     await tester.tap(find.text('Chi tiết'));
     await tester.pumpAndSettle();
     expect(find.text(details), findsOneWidget);
     await tester.tap(find.text('Đóng'));
     await tester.pumpAndSettle();
-    final copy = find.byKey(const Key('copy-viewer-fingerprint'));
-    await tester.ensureVisible(copy);
-    await tester.tap(copy);
-    await tester.pumpAndSettle();
-    expect(
-      LanConnectionDetails.parse(clipboard!).fingerprint.replaceAll(' ', ''),
-      'A' * 64,
-    );
     expect(gateway.fetches, [('172.16.1.126:4433', 'b' * 64)]);
     expect(gateway.responses, isEmpty);
     expect(tester.takeException(), isNull);
@@ -454,20 +516,55 @@ void main() {
   );
 
   testWidgets(
-    'sharing shows the configured viewer pin and updates after restart',
+    'sharing starts without a viewer pin and copies the active host details',
     (tester) async {
       final gateway = FakeLan();
       await mount(tester, gateway);
       await startHost(tester);
-      final trustedPin = find.byKey(const Key('trusted-viewer-fingerprint'));
-      expect(tester.widget<SelectableText>(trustedPin).data, 'b' * 64);
+      expect(gateway.state.listening, isTrue);
+      expect(find.byKey(const Key('trusted-viewer-fingerprint')), findsNothing);
+      final copy = find.byKey(const Key('copy-host-details'));
+      await tester.ensureVisible(copy);
+      await tester.tap(copy);
+      await tester.pumpAndSettle();
+      final details = LanConnectionDetails.parse(clipboard!);
+      expect(details.address, '192.168.1.20:4433');
+      expect(details.fingerprint.replaceAll(' ', ''), 'A' * 64);
+      ScaffoldMessenger.of(tester.element(copy)).removeCurrentSnackBar();
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Dừng chia sẻ'));
       await tester.tap(find.text('Dừng chia sẻ'));
       await tester.pumpAndSettle();
-      expect(trustedPin, findsNothing);
+      expect(copy, findsNothing);
       expect(gateway.stopped, 1);
-      await startHost(tester, viewerFingerprint: 'c' * 64);
-      expect(tester.widget<SelectableText>(trustedPin).data, 'c' * 64);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'viewer only enters the host IP and fingerprint for live control',
+    (tester) async {
+      final gateway = FakeLan();
+      await mount(tester, gateway);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'IP máy chia sẻ và cổng'),
+        '192.168.1.20',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Dấu vân tay của máy chia sẻ'),
+        'b' * 64,
+      );
+      await tester.tap(find.text('Kết nối và điều khiển'));
+      await tester.pump();
+      expect(gateway.fetches, [('192.168.1.20:4433', 'b' * 64)]);
+      gateway.live.complete(9);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Màn hình trực tiếp'), findsOneWidget);
+      expect(gateway.responses, isEmpty);
+      await tester.tap(find.text('Ngắt kết nối'));
+      await tester.pumpAndSettle();
+      expect(gateway.stoppedSessions, contains(9));
       await tester.pumpWidget(const SizedBox());
     },
   );

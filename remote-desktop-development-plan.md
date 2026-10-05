@@ -1,6 +1,6 @@
 # Remote Desktop App — Development Plan
 
-Document status: M0 foundation and an initial Ubuntu X11 LAN snapshot prototype are implemented. QUIC/TLS 1.3 mutually pinned device authentication, local consent and a bounded PNG snapshot have passed loopback tests. Windows qualification, Android secure storage, H.264, continuous video and OS input remain open; M0 multi-platform acceptance and M1 are not complete. See [README](README.md), [foundation decisions](docs/decisions/0001-foundation.md) and [LAN prototype](docs/lan-prototype.md) for implemented behavior and remaining gates.
+Document status: M0 foundation and an Ubuntu X11 LAN prototype with H.264 video rendered through Linux native textures and attended mouse/keyboard control are implemented. QUIC/TLS 1.3 host pinning, TLS client-key proof and local consent (see ADR 0003), changing frames, real XTEST input and cleanup have passed loopback/Xvfb tests. A release loopback probe reaches about 29 decoded fps at 1080p on a simple Xvfb scene. Windows qualification, Android secure storage and cross-machine streaming performance remain open; M0 multi-platform acceptance and M1 are not complete. See [README](README.md), [foundation decisions](docs/decisions/0001-foundation.md) and [LAN prototype](docs/lan-prototype.md) for implemented behavior and remaining gates.
 
 ## Delivery milestones and release gates
 

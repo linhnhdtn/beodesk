@@ -16,6 +16,8 @@ enum Capability {
   H264 = 3;
   QUIC_DATAGRAM = 4;
   PNG_SNAPSHOT = 5;
+  PNG_STREAM = 6;
+  H264_STREAM = 7;
 }
 
 message PointerMove { float x = 1; float y = 2; }
@@ -45,6 +47,9 @@ enum Action {
   VIEW_APPROVED = 5;
   VIEW_DENIED = 6;
   VIEW_UNAVAILABLE = 7;
+  CONTROL_APPROVED = 8;
+  RELEASE_INPUT = 9;
+  FRAME_RECEIVED = 10;
 }
 message SessionControl { Action action = 1; }
 

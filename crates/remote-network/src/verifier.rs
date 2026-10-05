@@ -34,6 +34,14 @@ pub(crate) fn certificate_key(cert: &CertificateDer<'_>) -> Result<[u8; 32], Err
         .map_err(|_| Error::General("Invalid Ed25519 public key length".into()))
 }
 
+// The host accepts a cryptographically proven device identity before asking
+// its local user for consent. An optional pin is retained for restricted callers.
+#[derive(Debug)]
+pub(crate) struct ClientVerifier {
+    pub pin: Option<PeerPin>,
+    pub provider: Arc<rustls::crypto::CryptoProvider>,
+}
+
 impl PinnedVerifier {
     fn verify_pin(
         &self,
@@ -41,27 +49,7 @@ impl PinnedVerifier {
         intermediates: &[CertificateDer<'_>],
         now: UnixTime,
     ) -> Result<(), Error> {
-        if !intermediates.is_empty() || cert.len() > 16 * 1024 {
-            return Err(Error::General("Unexpected device certificate chain".into()));
-        }
-        let key = certificate_key(cert)?;
-        if PeerPin::from_public_key(&key) != self.pin {
-            return Err(Error::General(
-                "Peer device fingerprint does not match the verified pin".into(),
-            ));
-        }
-        let (_, parsed) = X509Certificate::from_der(cert.as_ref())
-            .map_err(|_| Error::General("Invalid peer certificate".into()))?;
-        let current = i64::try_from(now.as_secs())
-            .map_err(|_| Error::General("Invalid system time".into()))?;
-        if current < parsed.validity().not_before.timestamp()
-            || current > parsed.validity().not_after.timestamp()
-        {
-            return Err(Error::General(
-                "Peer device certificate is not valid at current time".into(),
-            ));
-        }
-        Ok(())
+        verify_certificate(cert, intermediates, now, Some(self.pin))
     }
 
     fn verify_signature(
@@ -88,6 +76,35 @@ impl PinnedVerifier {
             )
         }
     }
+}
+
+fn verify_certificate(
+    cert: &CertificateDer<'_>,
+    intermediates: &[CertificateDer<'_>],
+    now: UnixTime,
+    pin: Option<PeerPin>,
+) -> Result<(), Error> {
+    if !intermediates.is_empty() || cert.len() > 16 * 1024 {
+        return Err(Error::General("Unexpected device certificate chain".into()));
+    }
+    let key = certificate_key(cert)?;
+    if pin.is_some_and(|pin| PeerPin::from_public_key(&key) != pin) {
+        return Err(Error::General(
+            "Peer device fingerprint does not match the verified pin".into(),
+        ));
+    }
+    let (_, parsed) = X509Certificate::from_der(cert.as_ref())
+        .map_err(|_| Error::General("Invalid peer certificate".into()))?;
+    let current =
+        i64::try_from(now.as_secs()).map_err(|_| Error::General("Invalid system time".into()))?;
+    if current < parsed.validity().not_before.timestamp()
+        || current > parsed.validity().not_after.timestamp()
+    {
+        return Err(Error::General(
+            "Peer device certificate is not valid at current time".into(),
+        ));
+    }
+    Ok(())
 }
 
 impl ServerCertVerifier for PinnedVerifier {
@@ -124,7 +141,7 @@ impl ServerCertVerifier for PinnedVerifier {
     }
 }
 
-impl ClientCertVerifier for PinnedVerifier {
+impl ClientCertVerifier for ClientVerifier {
     fn offer_client_auth(&self) -> bool {
         true
     }
@@ -140,7 +157,7 @@ impl ClientCertVerifier for PinnedVerifier {
         intermediates: &[CertificateDer<'_>],
         now: UnixTime,
     ) -> Result<ClientCertVerified, Error> {
-        self.verify_pin(cert, intermediates, now)?;
+        verify_certificate(cert, intermediates, now, self.pin)?;
         Ok(ClientCertVerified::assertion())
     }
     fn verify_tls12_signature(
@@ -149,7 +166,12 @@ impl ClientCertVerifier for PinnedVerifier {
         cert: &CertificateDer<'_>,
         signature: &DigitallySignedStruct,
     ) -> Result<HandshakeSignatureValid, Error> {
-        self.verify_signature(message, cert, signature, false)
+        rustls::crypto::verify_tls12_signature(
+            message,
+            cert,
+            signature,
+            &self.provider.signature_verification_algorithms,
+        )
     }
     fn verify_tls13_signature(
         &self,
@@ -157,7 +179,12 @@ impl ClientCertVerifier for PinnedVerifier {
         cert: &CertificateDer<'_>,
         signature: &DigitallySignedStruct,
     ) -> Result<HandshakeSignatureValid, Error> {
-        self.verify_signature(message, cert, signature, true)
+        rustls::crypto::verify_tls13_signature(
+            message,
+            cert,
+            signature,
+            &self.provider.signature_verification_algorithms,
+        )
     }
     fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
         vec![SignatureScheme::ED25519]

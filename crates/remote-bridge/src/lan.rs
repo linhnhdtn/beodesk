@@ -1,14 +1,14 @@
 use crate::api::lan::HostStatus;
 use anyhow::{Context, Result, ensure};
 use remote_network::{
-    PeerPin, snapshot,
+    PeerPin, live,
     transport::{self, DeviceCertificate},
 };
 use std::{
     net::SocketAddr,
     sync::{
         Arc, Mutex, OnceLock,
-        atomic::{AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
     },
 };
 use tokio::{runtime::Runtime, sync::oneshot};
@@ -22,15 +22,18 @@ struct Pending {
     id: u32,
     fingerprint: String,
     name: String,
+    live: bool,
+    control: bool,
     reply: Option<oneshot::Sender<bool>>,
 }
 struct Host {
     endpoint: quinn::Endpoint,
     task: tokio::task::JoinHandle<()>,
     pending: Arc<Mutex<Option<Pending>>>,
+    active: Arc<AtomicBool>,
 }
 
-fn runtime() -> &'static Runtime {
+pub(crate) fn runtime() -> &'static Runtime {
     RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -39,12 +42,11 @@ fn runtime() -> &'static Runtime {
     })
 }
 
-pub fn start_host(address: &str, peer_fingerprint: &str) -> Result<HostStatus> {
+pub fn start_host(address: &str) -> Result<HostStatus> {
     let address: SocketAddr = address
         .parse()
         .context("Use an IP address and port, for example 192.168.1.20:4433")?;
     ensure!(address.port() != 0, "Choose a nonzero listening port");
-    let pin = PeerPin::parse(peer_fingerprint)?;
     ensure!(
         cfg!(target_os = "linux") && std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("x11"),
         "Sharing currently requires Ubuntu GNOME on X11"
@@ -59,10 +61,12 @@ pub fn start_host(address: &str, peer_fingerprint: &str) -> Result<HostStatus> {
         host.is_none(),
         "A screen-sharing listener is already active"
     );
-    let endpoint = runtime().block_on(async { transport::server(address, &cert, pin) })?;
+    let endpoint = runtime().block_on(async { transport::server_attended(address, &cert) })?;
     let pending = Arc::new(Mutex::new(None));
     let worker_endpoint = endpoint.clone();
     let worker_pending = pending.clone();
+    let active = Arc::new(AtomicBool::new(false));
+    let worker_active = active.clone();
     let task = runtime().spawn(async move {
         loop {
             let accepted = match transport::accept(&worker_endpoint).await {
@@ -75,7 +79,8 @@ pub fn start_host(address: &str, peer_fingerprint: &str) -> Result<HostStatus> {
                 }
             };
             let queue = worker_pending.clone();
-            let result = snapshot::serve(
+            let session_active = worker_active.clone();
+            let result = live::serve(
                 accepted,
                 move |request| async move {
                     let (sender, receiver) = oneshot::channel();
@@ -85,6 +90,8 @@ pub fn start_host(address: &str, peer_fingerprint: &str) -> Result<HostStatus> {
                             id,
                             fingerprint: request.peer_fingerprint,
                             name: request.device_name,
+                            live: request.live,
+                            control: request.control,
                             reply: Some(sender),
                         });
                     } else {
@@ -97,10 +104,11 @@ pub fn start_host(address: &str, peer_fingerprint: &str) -> Result<HostStatus> {
                     remote_capture::ensure_desktop_unlocked()?;
                     Ok(frame.png)
                 },
+                move || crate::desktop::HostDesktop::open(session_active),
             )
             .await;
             if let Err(error) = result {
-                report_failure("snapshot request", &error);
+                report_failure("viewing session", &error);
             }
             if let Ok(mut pending) = worker_pending.lock() {
                 *pending = None;
@@ -111,6 +119,7 @@ pub fn start_host(address: &str, peer_fingerprint: &str) -> Result<HostStatus> {
         endpoint,
         task,
         pending,
+        active,
     });
     drop(host);
     host_status()
@@ -136,10 +145,14 @@ pub fn host_status() -> Result<HostStatus> {
         request_id: 0,
         peer_fingerprint: String::new(),
         device_name: String::new(),
+        live: false,
+        control: false,
+        active: false,
     };
     if let Some(host) = host.as_ref() {
         status.listening = true;
         status.address = host.endpoint.local_addr()?.to_string();
+        status.active = host.active.load(Ordering::Acquire);
         let pending = host
             .pending
             .lock()
@@ -153,6 +166,8 @@ pub fn host_status() -> Result<HostStatus> {
             status.request_id = request.id;
             status.peer_fingerprint = request.fingerprint.clone();
             status.device_name = request.name.clone();
+            status.live = request.live;
+            status.control = request.control;
         }
     }
     Ok(status)
@@ -188,11 +203,12 @@ pub fn stop_host() -> Result<()> {
         host.endpoint
             .close(0_u32.into(), b"Local user stopped sharing");
         host.task.abort();
+        let _ = runtime().block_on(host.task);
     }
     Ok(())
 }
 
-struct ClientGuard;
+pub(crate) struct ClientGuard;
 impl Drop for ClientGuard {
     fn drop(&mut self) {
         if let Ok(mut active) = CLIENT.lock() {
@@ -207,23 +223,27 @@ pub fn fetch(address: &str, host_fingerprint: &str) -> Result<Vec<u8>> {
         .context("Use an IP address and port, for example 192.168.1.20:4433")?;
     let pin = PeerPin::parse(host_fingerprint)?;
     let identity = crate::storage::load_device()?;
-    let (cancel_sender, cancel_receiver) = oneshot::channel();
-    {
-        let mut active = CLIENT
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Client state unavailable"))?;
-        ensure!(active.is_none(), "Another snapshot request is in progress");
-        *active = Some(Some(cancel_sender));
-    }
-    let _guard = ClientGuard;
+    let (_guard, cancel_receiver) = reserve_client()?;
     let bytes = runtime().block_on(async {
         tokio::select! {
-            result = snapshot::fetch(address, &identity, pin) => result,
+            result = remote_network::snapshot::fetch(address, &identity, pin) => result,
             _ = cancel_receiver => Err(anyhow::anyhow!("Viewing request cancelled")),
         }
     })?;
     remote_capture::validate_png(&bytes)?;
     Ok(bytes)
+}
+
+pub(crate) fn reserve_client() -> Result<(ClientGuard, oneshot::Receiver<()>)> {
+    let (cancel_sender, cancel_receiver) = oneshot::channel();
+    {
+        let mut active = CLIENT
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Client state unavailable"))?;
+        ensure!(active.is_none(), "Another viewing session is in progress");
+        *active = Some(Some(cancel_sender));
+    }
+    Ok((ClientGuard, cancel_receiver))
 }
 
 pub fn cancel_client() -> Result<()> {

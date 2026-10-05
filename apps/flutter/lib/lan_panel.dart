@@ -7,6 +7,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge.dart';
 import 'lan_gateway.dart';
 import 'connection_details.dart';
 import 'share_host_dialog.dart';
+import 'live_session.dart';
 
 class LanPanel extends StatefulWidget {
   const LanPanel({
@@ -29,9 +30,9 @@ class _LanPanelState extends State<LanPanel> {
   bool _starting = false;
   bool _checking = false;
   bool _consentOpen = false;
-  bool _viewerRejected = false;
+  bool _hostActive = false;
+  int? _liveId;
   String _listeningAddress = '';
-  String _trustedViewerFingerprint = '';
 
   @override
   void initState() {
@@ -48,6 +49,9 @@ class _LanPanelState extends State<LanPanel> {
       unawaited(widget.gateway.stopHost().catchError((Object _) {}));
     }
     if (_fetching) unawaited(widget.gateway.cancel().catchError((Object _) {}));
+    if (_liveId != null) {
+      unawaited(widget.gateway.stopLive(_liveId!).catchError((Object _) {}));
+    }
     super.dispose();
   }
 
@@ -60,17 +64,16 @@ class _LanPanelState extends State<LanPanel> {
       // A remote TLS rejection means the host rejected our viewer identity.
       // A local failure while authenticating the host rejects its certificate.
       if (receiving && lower.contains('aborted by peer')) {
-        setState(() => _viewerRejected = true);
-        message = 'Máy chia sẻ từ chối dấu vân tay của máy này. Cập nhật vân tay máy xem rồi bật lại chia sẻ.';
+        message = 'Máy chia sẻ đang dùng cách kết nối cũ. Cập nhật BeoDesk trên máy chia sẻ rồi bật lại chia sẻ.';
       } else if (receiving && lower.contains('authenticating lan host at ')) {
         message = 'Dấu vân tay máy chia sẻ không khớp. Sao chép lại IP + vân tay từ máy chia sẻ và đối chiếu đầy đủ.';
       } else {
-        message = 'Dấu vân tay xác thực không khớp. Hãy đối chiếu đầy đủ ở cả hai máy.';
+        message = 'Dấu vân tay xác thực không khớp. Hãy đối chiếu với dấu vân tay trên máy chia sẻ.';
       }
     } else if (lower.contains('connection lost') ||
         lower.contains('transport error') ||
         lower.contains('cryptographic handshake')) {
-      message = 'Kết nối bị ngắt. Kiểm tra dấu vân tay ở cả hai máy; mở Chi tiết để xem nguyên nhân.';
+      message = 'Kết nối bị ngắt. Kiểm tra IP và vân tay máy chia sẻ; mở Chi tiết để xem nguyên nhân.';
     } else if (lower.contains('timed out') ||
         lower.contains('connection refused')) {
       message = 'Không nhận được phản hồi. Kiểm tra IP, cổng, chia sẻ đang bật và UDP/firewall.';
@@ -111,6 +114,9 @@ class _LanPanelState extends State<LanPanel> {
         setState(() => _hosting = false);
         return;
       }
+      if (_hostActive != state.active) {
+        setState(() => _hostActive = state.active);
+      }
       if (state.requestId == 0) return;
       _consentOpen = true;
       final approved = await showDialog<bool>(
@@ -129,8 +135,8 @@ class _LanPanelState extends State<LanPanel> {
     }
   }
 
-  Future<void> _startHost({bool detectAddress = false}) async {
-    final values = await showDialog<(String, String)>(
+  Future<void> _startHost({bool detectAddress = true}) async {
+    final address = await showDialog<String>(
       context: context,
       builder: (context) => ShareHostDialog(
         gateway: widget.gateway,
@@ -138,10 +144,10 @@ class _LanPanelState extends State<LanPanel> {
         autoDetect: detectAddress,
       ),
     );
-    if (values == null || !mounted) return;
+    if (address == null || !mounted) return;
     setState(() => _starting = true);
     try {
-      final state = await widget.gateway.startHost(values.$1, values.$2);
+      final state = await widget.gateway.startHost(address);
       if (!mounted) {
         await widget.gateway.stopHost();
         return;
@@ -149,7 +155,6 @@ class _LanPanelState extends State<LanPanel> {
       setState(() {
         _hosting = state.listening;
         _listeningAddress = state.address;
-        _trustedViewerFingerprint = values.$2;
       });
     } catch (error) {
       _error(error);
@@ -179,16 +184,23 @@ class _LanPanelState extends State<LanPanel> {
     }
   }
 
-  Future<void> _copyViewerFingerprint() async {
+  Future<void> _copyHostDetails() async {
     try {
-      await Clipboard.setData(ClipboardData(text: widget.localFingerprint));
+      await Clipboard.setData(
+        ClipboardData(
+          text: LanConnectionDetails(
+            address: _listeningAddress,
+            fingerprint: widget.localFingerprint,
+          ).encode(),
+        ),
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           const SnackBar(
             content: Text(
-              'Đã sao chép dấu vân tay máy xem. Gửi cho máy chia sẻ để đối chiếu.',
+              'Đã sao chép IP + vân tay. Gửi cho máy muốn điều khiển.',
             ),
           ),
         );
@@ -204,11 +216,10 @@ class _LanPanelState extends State<LanPanel> {
     }
     setState(() {
       _fetching = true;
-      _viewerRejected = false;
     });
     try {
       final image = await widget.gateway.fetch(
-        _address.text.trim(),
+        LanConnectionDetails.normalizeAddress(_address.text),
         _fingerprint.text.trim(),
       );
       if (!mounted) return;
@@ -251,6 +262,38 @@ class _LanPanelState extends State<LanPanel> {
     }
   }
 
+  Future<void> _connectLive() async {
+    if (_address.text.trim().isEmpty || _fingerprint.text.trim().isEmpty) {
+      _error('Cần địa chỉ IP và dấu vân tay đầy đủ của máy chia sẻ.');
+      return;
+    }
+    setState(() {
+      _fetching = true;
+    });
+    int? id;
+    try {
+      id = await widget.gateway.startLive(
+        LanConnectionDetails.normalizeAddress(_address.text),
+        _fingerprint.text.trim(),
+      );
+      _liveId = id;
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => Dialog.fullscreen(
+          child: LiveSession(gateway: widget.gateway, sessionId: id!),
+        ),
+      );
+    } catch (error) {
+      _error(error, receiving: true);
+    } finally {
+      if (id != null) await widget.gateway.stopLive(id);
+      _liveId = null;
+      if (mounted) setState(() => _fetching = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Container(
     width: double.infinity,
@@ -271,7 +314,7 @@ class _LanPanelState extends State<LanPanel> {
         ),
         const SizedBox(height: 12),
         const Text(
-          'Prototype nhận một ảnh màn hình. Video liên tục và điều khiển chuột/phím sẽ được bổ sung ở bước sau.',
+          'Xem màn hình liên tục và dùng chuột, bàn phím sau khi máy chia sẻ cho phép.',
         ),
         const SizedBox(height: 20),
         TextField(
@@ -279,7 +322,7 @@ class _LanPanelState extends State<LanPanel> {
           enabled: !_fetching,
           decoration: const InputDecoration(
             labelText: 'IP máy chia sẻ và cổng',
-            hintText: '192.168.1.20:4433',
+            hintText: '192.168.1.20 (cổng mặc định 4433)',
           ),
         ),
         const SizedBox(height: 16),
@@ -303,37 +346,21 @@ class _LanPanelState extends State<LanPanel> {
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
+            key: const Key('connect-live'),
+            onPressed: _fetching ? null : _connectLive,
+            icon: const Icon(Icons.connected_tv_outlined),
+            label: const Text('Kết nối và điều khiển'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
             onPressed: _fetching ? null : _fetch,
             icon: const Icon(Icons.image_outlined),
             label: const Text('Nhận ảnh màn hình'),
           ),
         ),
-        if (_viewerRejected) ...[
-          const SizedBox(height: 16),
-          const Text(
-            'Cập nhật dấu vân tay ở máy chia sẻ',
-            style: TextStyle(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Sao chép dấu vân tay máy này bên dưới và gửi qua kênh tin cậy. '
-            'Ở máy chia sẻ, chọn Dừng chia sẻ, mở lại Chia sẻ màn hình máy này, '
-            'dán vào ô Dấu vân tay của máy xem và đối chiếu đầy đủ rồi Bật chia sẻ. '
-            'Sau đó quay lại đây để nhận ảnh.',
-          ),
-          const SizedBox(height: 8),
-          SelectableText(
-            widget.localFingerprint,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            key: const Key('copy-viewer-fingerprint'),
-            onPressed: _copyViewerFingerprint,
-            icon: const Icon(Icons.copy_outlined),
-            label: const Text('Sao chép vân tay máy xem'),
-          ),
-        ],
         if (_fetching) ...[
           const SizedBox(height: 12),
           const LinearProgressIndicator(),
@@ -353,20 +380,24 @@ class _LanPanelState extends State<LanPanel> {
         const Divider(height: 40),
         if (_hosting) ...[
           Text(
-            'Đang chờ yêu cầu tại $_listeningAddress',
-            style: const TextStyle(color: Color(0xff087f8c)),
+            _hostActive
+                ? 'Đang chia sẻ màn hình trong một phiên trực tiếp'
+                : 'Đang chờ yêu cầu tại $_listeningAddress',
+            style: TextStyle(
+              color: _hostActive ? Colors.deepOrange : const Color(0xff087f8c),
+              fontWeight: _hostActive ? FontWeight.bold : FontWeight.normal,
+            ),
           ),
           const SizedBox(height: 12),
-          const Text('Dấu vân tay máy xem được phép kết nối:'),
-          const SizedBox(height: 8),
-          SelectableText(
-            _trustedViewerFingerprint,
-            key: const Key('trusted-viewer-fingerprint'),
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+          const Text(
+            'Gửi IP + vân tay cho máy muốn điều khiển. Bạn sẽ xác nhận từng yêu cầu kết nối.',
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Để đổi máy xem hoặc sửa dấu vân tay, dừng chia sẻ rồi bật lại.',
+          OutlinedButton.icon(
+            key: const Key('copy-host-details'),
+            onPressed: _copyHostDetails,
+            icon: const Icon(Icons.copy_outlined),
+            label: const Text('Sao chép IP + vân tay'),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
@@ -420,6 +451,7 @@ class _ConsentDialog extends StatefulWidget {
 class _ConsentDialogState extends State<_ConsentDialog> {
   late final Timer _timer;
   bool _checking = false;
+  bool _closing = false;
 
   @override
   void initState() {
@@ -428,18 +460,28 @@ class _ConsentDialogState extends State<_ConsentDialog> {
   }
 
   Future<void> _check() async {
-    if (_checking) return;
+    if (_checking || _closing) return;
     _checking = true;
     try {
       final status = await widget.gateway.hostStatus();
-      if (mounted &&
-          (!status.listening || status.requestId != widget.request.requestId)) {
-        Navigator.pop(context);
+      if (!status.listening || status.requestId != widget.request.requestId) {
+        _close();
       }
     } catch (_) {
-      if (mounted) Navigator.pop(context);
+      _close();
     } finally {
       _checking = false;
+    }
+  }
+
+  void _close([bool? approved]) {
+    if (!mounted || _closing) return;
+    _closing = true;
+    // The dialog stays mounted during its reverse animation. Stop polling
+    // before popping, and ignore any native status request already in flight.
+    _timer.cancel();
+    if (ModalRoute.of(context)?.isCurrent == true) {
+      Navigator.pop(context, approved);
     }
   }
 
@@ -451,34 +493,45 @@ class _ConsentDialogState extends State<_ConsentDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Cho phép xem màn hình?'),
+    title: Text(
+      widget.request.control
+          ? 'Cho phép xem và điều khiển?'
+          : 'Cho phép xem màn hình?',
+    ),
     content: SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '${widget.request.deviceName} muốn nhận một ảnh chụp màn hình của máy này.',
+            widget.request.live
+                ? '${widget.request.deviceName} muốn xem màn hình liên tục${widget.request.control ? ' và điều khiển chuột, bàn phím' : ''} của máy này.'
+                : '${widget.request.deviceName} muốn nhận một ảnh chụp màn hình của máy này.',
           ),
           const SizedBox(height: 16),
-          const Text('Thiết bị đã xác thực:'),
+          const Text('Dấu vân tay máy đang yêu cầu:'),
           const SizedBox(height: 8),
           SelectableText(widget.request.peerFingerprint),
           const SizedBox(height: 16),
-          const Text(
-            'Yêu cầu hết hạn sau 60 giây. Không cấp quyền điều khiển chuột hoặc bàn phím.',
+          Text(
+            widget.request.live
+                ? 'Yêu cầu hết hạn sau 60 giây. Bạn có thể ngắt phiên bất cứ lúc nào bằng Dừng chia sẻ.'
+                : 'Yêu cầu hết hạn sau 60 giây. Không cấp quyền điều khiển chuột hoặc bàn phím.',
           ),
         ],
       ),
     ),
     actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context, false),
-        child: const Text('Từ chối'),
-      ),
+      TextButton(onPressed: () => _close(false), child: const Text('Từ chối')),
       FilledButton(
-        onPressed: () => Navigator.pop(context, true),
-        child: const Text('Cho phép một ảnh'),
+        onPressed: () => _close(true),
+        child: Text(
+          widget.request.control
+              ? 'Cho phép điều khiển'
+              : widget.request.live
+              ? 'Cho phép xem liên tục'
+              : 'Cho phép một ảnh',
+        ),
       ),
     ],
   );

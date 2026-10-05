@@ -1,6 +1,6 @@
 use crate::{
     PeerPin,
-    verifier::{PinnedVerifier, certificate_key},
+    verifier::{ClientVerifier, PinnedVerifier, certificate_key},
 };
 use anyhow::{Context, Result, ensure};
 use quinn::{
@@ -77,6 +77,20 @@ pub fn server(
     certificate: &DeviceCertificate,
     peer: PeerPin,
 ) -> Result<Endpoint> {
+    server_with_peer(bind, certificate, Some(peer))
+}
+
+/// Authenticate any presented Ed25519 client key; local consent in live/snapshot
+/// is still required before opening capture or injecting input.
+pub fn server_attended(bind: SocketAddr, certificate: &DeviceCertificate) -> Result<Endpoint> {
+    server_with_peer(bind, certificate, None)
+}
+
+fn server_with_peer(
+    bind: SocketAddr,
+    certificate: &DeviceCertificate,
+    peer: Option<PeerPin>,
+) -> Result<Endpoint> {
     ensure!(
         !bind.ip().is_unspecified()
             && !bind.ip().is_multicast()
@@ -86,7 +100,7 @@ pub fn server(
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let mut tls = rustls::ServerConfig::builder_with_provider(provider.clone())
         .with_protocol_versions(&[&rustls::version::TLS13])?
-        .with_client_cert_verifier(Arc::new(PinnedVerifier {
+        .with_client_cert_verifier(Arc::new(ClientVerifier {
             pin: peer,
             provider,
         }))
@@ -155,4 +169,59 @@ pub async fn connect(
     .await
     .context("Peer authentication timed out")??;
     Ok((endpoint, authenticated(connection)?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use remote_core::identity::{IdentityError, IdentityStore};
+    use zeroize::Zeroizing;
+
+    #[tokio::test]
+    async fn attended_listener_still_requires_a_tls_client_certificate() {
+        struct Store;
+        impl IdentityStore for Store {
+            fn load(&self) -> Result<Option<Zeroizing<Vec<u8>>>, IdentityError> {
+                Ok(None)
+            }
+            fn save(&self, _: &[u8]) -> Result<(), IdentityError> {
+                Ok(())
+            }
+        }
+        let host = DeviceIdentity::load_or_create(&Store).unwrap();
+        let server = server_attended(
+            "127.0.0.1:0".parse().unwrap(),
+            &DeviceCertificate::from_identity(&host).unwrap(),
+        )
+        .unwrap();
+        let address = server.local_addr().unwrap();
+        let accepting = tokio::spawn(async move { accept(&server).await.is_err() });
+        let provider = Arc::new(rustls::crypto::ring::default_provider());
+        let mut tls = rustls::ClientConfig::builder_with_provider(provider.clone())
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .unwrap()
+            .dangerous()
+            .with_custom_certificate_verifier(Arc::new(PinnedVerifier {
+                pin: PeerPin::from_public_key(&host.public_key()),
+                provider,
+            }))
+            .with_no_client_auth();
+        tls.alpn_protocols = vec![ALPN.to_vec()];
+        let mut endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
+        endpoint.set_default_client_config(quinn::ClientConfig::new(Arc::new(
+            QuicClientConfig::try_from(tls).unwrap(),
+        )));
+        if let Ok(connection) = endpoint.connect(address, "beodesk.local").unwrap().await {
+            // Client completion may precede the server's certificate requirement.
+            tokio::time::timeout(Duration::from_secs(3), connection.closed())
+                .await
+                .unwrap();
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_secs(3), accepting)
+                .await
+                .unwrap()
+                .unwrap()
+        );
+    }
 }

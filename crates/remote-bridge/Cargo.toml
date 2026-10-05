@@ -13,6 +13,8 @@ remote-core.workspace = true
 remote-protocol.workspace = true
 remote-network.workspace = true
 remote-capture.workspace = true
+remote-input.workspace = true
+remote-video.workspace = true
 tokio.workspace = true
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 zeroize.workspace = true
@@ -25,6 +27,9 @@ keyring = { version = "3.6", features = ["sync-secret-service", "crypto-rust"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3.6", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+x11rb = "0.13"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
